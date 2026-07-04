@@ -849,20 +849,35 @@ class VietstockCrawler:
 
             for wf, wt in self.window_ranges:
                 logger.info(f"===== Window {wf} -> {wt} =====")
-                if not await self.navigate_to_target():
-                    logger.warning(f"Could not load listing for window {wf}-{wt}; skipping")
-                    continue
-                if not await self.apply_date_window(wf, wt):
-                    logger.warning(f"Could not apply window {wf}-{wt}; skipping")
+                # Retry navigate+apply once on transient failure (captcha/timeout) so a
+                # single hiccup mid-run doesn't silently drop a whole window. Observed:
+                # a long --from-date 2001 backfill missed ~95% of 2016 (got 18/388) and
+                # ~12% of 2015, then recovered for 2017+ — a transient window-skip, not a
+                # logic bug. This retry catches navigate/apply failures; a partial-window
+                # miss (few pages captured) is still possible and only shows as a low count.
+                window_ready = False
+                for attempt in (1, 2):
+                    if not await self.navigate_to_target():
+                        logger.warning(f"navigate_to_target failed (attempt {attempt}) for window {wf}-{wt}")
+                        continue
+                    if not await self.apply_date_window(wf, wt):
+                        logger.warning(f"apply_date_window failed (attempt {attempt}) for window {wf}-{wt}")
+                        continue
+                    window_ready = True
+                    break
+                if not window_ready:
+                    logger.warning(f"Could not load+apply window {wf}-{wt} after retry; skipping")
                     continue
 
                 page_num = 1
+                window_new = 0
                 while True:
                     logger.info(f"Processing page {page_num} (window {wf}-{wt})...")
                     reports = await self.extract_report_links()
                     new_data, _ = await self._collect_reports(reports)
                     if new_data:
                         self.save_to_csv(new_data)
+                        window_new += len(new_data)
 
                     if self.test_mode:
                         logger.info("Test mode: stopping after first page of this window")
@@ -874,6 +889,12 @@ class VietstockCrawler:
                         logger.info(f"Window {wf}-{wt} exhausted (no more pages)")
                         break
                     page_num += 1
+
+                if window_new == 0:
+                    logger.warning(
+                        f"Window {wf}-{wt} yielded 0 new reports — possible transient miss "
+                        f"(captcha/timeout) OR a genuine site gap. Re-run to verify."
+                    )
 
                 if self.test_mode:
                     break

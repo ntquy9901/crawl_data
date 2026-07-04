@@ -74,6 +74,7 @@ Cào "Báo cáo phân tích" từ `https://finance.vietstock.vn/bao-cao-phan-tic
 - `crawler.py` — script chính, class `VietstockCrawler`. Flow: `init_browser` → loop {navigate/paginate → `extract_report_links` → `_collect_reports` (date-filter → dedup → `download_pdf` nếu `DOWNLOAD_PDF` → `save_to_csv`)}. Hai mode: `crawl()` (pagination thường, trong window mặc định ~1 năm) và `crawl_by_windows()` (`--from-date` — set filter `#fromDate/#toDate` + click `#btnSearchEDoc` để tới dữ liệu cũ).
 - `config.py` — constants từ `.env` (`CAPTCHA_PAUSE_MINUTES=5`, `CAPTCHA_MAX_RETRIES=3`, `RANDOM_DELAY` 3–8s, `DOWNLOAD_PDF=false`, paths, CSV_HEADERS).
 - `merge_csv.py` — gộp nhiều CSV backfill song song vào `data/data.csv`, dedup theo `pdf_url`, ưu tiên row có PDF. `python merge_csv.py --inputs <files> [--dry-run]`.
+- `cafef_crawler.py` + `cafef_config.py` — crawler tin tức Cafef (sibling của Vietstock): daily RSS (`--daily`) + backfill sitemap shards (`--backfill`, classify section bằng breadcrumb). Self-contained (riêng dedup, không đụng `utils/dedup.py`). Output `data/cafef_articles.csv`.
 - `utils/anti_bot.py` — stealth browser, `safe_goto`/`safe_click`, `human_like_scroll`, `get_random_user_agent`.
 - `utils/dedup.py` — `DedupManager` (check URL/ID trong CSV).
 - `utils/proxy_manager.py` — xoay vòng proxy (`USE_PROXY=false`, chưa dùng thật).
@@ -99,9 +100,11 @@ Luôn set `PYTHONUTF8=1` trên Windows (CSV luôn UTF-8 BOM).
 
 ## Trạng thái (2026-07-04)
 - ✅ Pagination (JS `#report-paging`), ✅ Captcha pause 5 phút + retry 3 lần, ✅ Download (browser UA + retry + `context.request.get()`), ✅ Date-bounded crawl, ✅ `--max-pages`/`--start-page`, ✅ `DOWNLOAD_PDF` toggle (default false = metadata-only nhanh), ✅ **Window-crawl `--from-date`** (lấy dữ liệu cũ qua date filter — listing mặc định khoá ~1 năm), ✅ `merge_csv.py` (gộp backfill song song).
-- **Dataset hiện tại**: `data/data.csv` = **14.393 reports unique** (theo `pdf_url`), **2001–2026**, **2.336 PDF** (chỉ 2026; 2001-2025 metadata-only). Thưa 2001-2007, đặc từ 2008.
-- ⚠️ **Bug CHƯA fix — stray-date**: card thiếu date parse được → fallback `datetime.now()` → cột `date` sai bộ phận (phồng năm gần 2026, hút năm xa vd 2016). `pdf_url` đúng 100%. Ưu tiên sửa.
-- ⚠️ **Gap 2006-2007** (=0) — chưa rõ site không index hay bug, cần verify.
+- **Dataset hiện tại**: `data/vnstock_articles.csv` = **14.825 reports unique** (theo `pdf_url`; gộp `data.csv` + `data_archive.csv` + `data_2021_2025.csv` + re-crawl 2015–2018), **2001–2026**, **2.336 PDF** (chỉ 2026; 2001-2025 metadata-only).
+- ✅ **Gap 2006-2007 = gap THẬT của site** (verify 2026-07-04: date filter trả ~0) — không sửa được.
+- ✅ **Backfill-miss 2015-2016 đã lấp**: re-crawl từng window rồi gộp (2016: 18→387, 2015: 450→513; 2017/2018 vốn đủ). Nguyên nhân: captcha/timeout **tạm thời** trong lần chạy dài `--from-date 2001`, KHÔNG phải bug logic mọi window. `crawl_by_windows()` đã thêm **retry navigate/apply + cảnh báo window 0-yield**.
+- ⚠️ **stray-date**: còn trong code nhưng **tỷ lệ thấp ~0,5%** (re-crawl 2016: 1/388 dòng). KHÔNG phải nguyên nhân gap hay inflate 2026 (2026 = window PDF gần thật). Không còn ưu tiên cao.
+- ➕ **Cafef news crawler** (`cafef_crawler.py` + `cafef_config.py`): daily RSS (`cafef.vn/<section>.rss`) + backfill qua sitemap shards (2016–2026, classify section bằng breadcrumb `@id`). Output `data/cafef_articles.csv`. Plain HTTP, không Playwright. Skill `source-news-download` ở `.claude/skills/`.
 - ❌ CHƯA XONG khác: **Gmail alert** (skill BƯỚC 5 — `alert.py` chỉ logging); ❌ Proxy chưa verify; ❌ mode download-theo-thiếu (tải PDF 2001-2025); ❌ Windows Task Scheduler task chưa cài trong schtasks (chỉ có .xml).
 
 ## Pitfall đã fix — ĐỪNG tái phạm (chi tiết trong memory `crawler-pitfalls-to-avoid`)
