@@ -1,0 +1,112 @@
+# CLAUDE.md — Vietstock Analysis Reports Crawler
+
+
+Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+
+## 1. Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+## 2. Simplicity First
+
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+## 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+## 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
+
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+---
+
+## Mục tiêu
+Cào "Báo cáo phân tích" từ `https://finance.vietstock.vn/bao-cao-phan-tich` — lưu metadata vào `data/data.csv` và tải PDF về `data/pdf/`. Chạy định kỳ qua Windows Task Scheduler lúc 2h sáng. Phục vụ thu thập dữ liệu phân tích **2001–2026** (metadata toàn kỳ; PDF ưu tiên kỳ gần).
+
+## Stack & ràng buộc
+- Python 3.11 (async) + Playwright (chromium, stealth) + playwright-stealth + fake-useragent; requests (download), pandas (CSV), python-dotenv, aiohttp.
+- **KHÔNG dùng Vietstock JSON API** (giới hạn truy cập) — chỉ browser crawl.
+
+## Cấu trúc
+- `crawler.py` — script chính, class `VietstockCrawler`. Flow: `init_browser` → loop {navigate/paginate → `extract_report_links` → `_collect_reports` (date-filter → dedup → `download_pdf` nếu `DOWNLOAD_PDF` → `save_to_csv`)}. Hai mode: `crawl()` (pagination thường, trong window mặc định ~1 năm) và `crawl_by_windows()` (`--from-date` — set filter `#fromDate/#toDate` + click `#btnSearchEDoc` để tới dữ liệu cũ).
+- `config.py` — constants từ `.env` (`CAPTCHA_PAUSE_MINUTES=5`, `CAPTCHA_MAX_RETRIES=3`, `RANDOM_DELAY` 3–8s, `DOWNLOAD_PDF=false`, paths, CSV_HEADERS).
+- `merge_csv.py` — gộp nhiều CSV backfill song song vào `data/data.csv`, dedup theo `pdf_url`, ưu tiên row có PDF. `python merge_csv.py --inputs <files> [--dry-run]`.
+- `utils/anti_bot.py` — stealth browser, `safe_goto`/`safe_click`, `human_like_scroll`, `get_random_user_agent`.
+- `utils/dedup.py` — `DedupManager` (check URL/ID trong CSV).
+- `utils/proxy_manager.py` — xoay vòng proxy (`USE_PROXY=false`, chưa dùng thật).
+- `utils/alert.py` — phát hiện captcha (keyword + HTTP 403/429/5xx). **CHỈ log, chưa gửi Gmail.**
+- `run_crawler.ps1` + `task_scheduler.xml` — Windows Task Scheduler 2h/day.
+- `data/data.csv`, `data/pdf/`, `logs/`.
+
+## Chạy
+```bash
+# PDF download (trong window mặc định ~1 năm gần nhất):
+PYTHONUTF8=1 python crawler.py --start-date 2026-01-01 --headless true
+
+# Backfill metadata về cũ (window-crawl qua date filter; nhanh vì bỏ PDF):
+PYTHONUTF8=1 python crawler.py --from-date 2001-01-01 --headless true
+
+# Chạy song song ra CSV riêng rồi gộp:
+CSV_FILE=data/backfill.csv PYTHONUTF8=1 python crawler.py --from-date 2021-01-01 --headless true
+python merge_csv.py --inputs data/backfill.csv
+```
+Flags: `--start-date/--end-date` (per-report filter trong window mặc định), `--from-date` (window-crawl tới dữ liệu cũ, `--window-months N` mặc định 6), `--max-pages N` (0=∞), `--test`, `--headless true|false`.
+`DOWNLOAD_PDF=false` (mặc định `.env`) = chỉ metadata, bỏ download + delay → crawl nhanh nhất. Bật `DOWNLOAD_PDF=true` để tải PDF.
+Luôn set `PYTHONUTF8=1` trên Windows (CSV luôn UTF-8 BOM).
+
+## Trạng thái (2026-07-04)
+- ✅ Pagination (JS `#report-paging`), ✅ Captcha pause 5 phút + retry 3 lần, ✅ Download (browser UA + retry + `context.request.get()`), ✅ Date-bounded crawl, ✅ `--max-pages`/`--start-page`, ✅ `DOWNLOAD_PDF` toggle (default false = metadata-only nhanh), ✅ **Window-crawl `--from-date`** (lấy dữ liệu cũ qua date filter — listing mặc định khoá ~1 năm), ✅ `merge_csv.py` (gộp backfill song song).
+- **Dataset hiện tại**: `data/data.csv` = **14.393 reports unique** (theo `pdf_url`), **2001–2026**, **2.336 PDF** (chỉ 2026; 2001-2025 metadata-only). Thưa 2001-2007, đặc từ 2008.
+- ⚠️ **Bug CHƯA fix — stray-date**: card thiếu date parse được → fallback `datetime.now()` → cột `date` sai bộ phận (phồng năm gần 2026, hút năm xa vd 2016). `pdf_url` đúng 100%. Ưu tiên sửa.
+- ⚠️ **Gap 2006-2007** (=0) — chưa rõ site không index hay bug, cần verify.
+- ❌ CHƯA XONG khác: **Gmail alert** (skill BƯỚC 5 — `alert.py` chỉ logging); ❌ Proxy chưa verify; ❌ mode download-theo-thiếu (tải PDF 2001-2025); ❌ Windows Task Scheduler task chưa cài trong schtasks (chỉ có .xml).
+
+## Pitfall đã fix — ĐỪNG tái phạm (chi tiết trong memory `crawler-pitfalls-to-avoid`)
+1. Download **không** dùng UA ngẫu nhiên/fake-useragent mỗi request → Vietstock trả 4xx. Dùng **browser UA ổn định**.
+2. Pagination **không** dùng selector rộng (`[class*="next"]`, `a[href*="page"]`) — khớp sidebar → đi lạc trang. Scope vào `#report-paging`.
+3. Playwright `page.goto()` tới URL download → lỗi "Download is starting". Dùng `context.request.get()`.
+4. **Dedup đánh dấu "đã thấy" ngay cả khi download fail** → re-run không retry bản fail. Cần xoá row khỏi CSV trước khi crawl lại.
+5. **CHƯA fix — extraction gán `date`=hôm nay khi card thiếu date rõ** → cột `date` sai (phồng năm gần, hút năm xa). `pdf_url` vẫn đúng. Xem Trạng thái.

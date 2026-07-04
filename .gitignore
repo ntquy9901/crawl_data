@@ -1,0 +1,25 @@
+# Data & logs (heavy / runtime-regenerable)
+data/
+logs/
+
+# Secrets / local config
+.env
+proxies.txt
+
+# Local Claude permissions (project-local only)
+.claude/settings.local.json
+.claude/scheduled_tasks.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# OS / editor
+Thumbs.db
+.DS_Store
+.idea/
+.vscode/

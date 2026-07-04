@@ -1,0 +1,11 @@
+# Core Dependencies
+playwright>=1.40.0
+playwright-stealth>=1.0.0
+fake-useragent>=1.4.0
+requests>=2.31.0
+pandas>=2.0.0
+python-dotenv>=1.0.0
+
+# Optional: For better async handling
+aiohttp>=3.9.0
+aiofiles>=23.0.0
