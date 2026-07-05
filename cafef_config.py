@@ -22,6 +22,12 @@ CSV_FILE = PROJECT_ROOT / os.getenv("CAFEF_CSV_FILE", "data/cafef_articles.csv")
 # phải quét lại 757 shard (~15-20 phút) mỗi lần. Xoá file hoặc --refresh-shards để build lại.
 CANDIDATES_CACHE = DATA_PATH / "cafef_candidates.jsonl"
 
+# Proxy xoay vòng cho backfill sâu (chống IP throttle của cafef). Mặc định TẮT.
+# Bật: set CAFEF_USE_PROXY=true + nạp residential proxy (IP:PORT hoặc IP:PORT:USER:PASS)
+# vào CAFEF_PROXY_FILE (mặc định proxies.txt). Mỗi article fetch dùng 1 proxy random.
+USE_PROXY = os.getenv("CAFEF_USE_PROXY", "false").lower() == "true"
+PROXY_FILE = PROJECT_ROOT / os.getenv("CAFEF_PROXY_FILE", "proxies.txt")
+
 # Section slug -> nhãn (theo skill: CK + Tài chính + Nhận định).
 # Cafef không có section "tai-chinh" hay "nhan-dinh" (404); map sang slug thật
 # lấy từ cafef.vn/sitemaps/category.rss.

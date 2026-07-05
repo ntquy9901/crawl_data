@@ -14,6 +14,7 @@ import argparse
 import csv
 import html
 import json
+import random
 import re
 import sys
 import time
@@ -28,6 +29,7 @@ from cafef_config import (
     BASE_URL, RSS_URL_FMT, SITEMAP_INDEX,
     CAFEF_SECTIONS, DEFAULT_SECTIONS, CSV_HEADERS, CSV_FILE, CANDIDATES_CACHE,
     REQUEST_TIMEOUT, REQUEST_DELAY, MAX_RETRIES, USER_AGENT,
+    USE_PROXY, PROXY_FILE,
     ensure_paths_exist,
 )
 
@@ -61,10 +63,41 @@ def fetch(url: str):
     return None
 
 
+def _load_proxy_pool():
+    """Đọc proxies.txt → list proxy string (IP:PORT hoặc IP:PORT:USER:PASS)."""
+    if not USE_PROXY or not PROXY_FILE.exists():
+        return []
+    out = []
+    with open(PROXY_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and ":" in line:
+                out.append(line)
+    return out
+
+
+_PROXY_POOL = _load_proxy_pool()
+
+
+def _proxy_kwargs():
+    """Trả {'proxies': {...}} random từ pool (cho requests), hoặc {} nếu không dùng proxy."""
+    if not _PROXY_POOL:
+        return {}
+    p = random.choice(_PROXY_POOL)
+    parts = p.split(":")
+    if len(parts) == 2:
+        url = f"http://{parts[0]}:{parts[1]}"
+    elif len(parts) >= 4:
+        url = f"http://{parts[2]}:{parts[3]}@{parts[0]}:{parts[1]}"
+    else:
+        return {}
+    return {"proxies": {"http": url, "https": url}}
+
+
 def _fetch_once(url: str, timeout: int = 15):
-    """GET 1 lần, ngắn — cho backfill (rất nhiều request, không retry)."""
+    """GET 1 lần, ngắn — cho backfill (rất nhiều request). Dùng proxy xoay vòng nếu CAFEF_USE_PROXY."""
     try:
-        r = requests.get(url, headers=UA_HEADERS, timeout=timeout)
+        r = requests.get(url, headers=UA_HEADERS, timeout=timeout, **_proxy_kwargs())
         if r.status_code == 200:
             r.encoding = "utf-8"
             return r.text
