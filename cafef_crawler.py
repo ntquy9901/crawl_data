@@ -26,7 +26,7 @@ import requests
 
 from cafef_config import (
     BASE_URL, RSS_URL_FMT, SITEMAP_INDEX,
-    CAFEF_SECTIONS, DEFAULT_SECTIONS, CSV_HEADERS, CSV_FILE,
+    CAFEF_SECTIONS, DEFAULT_SECTIONS, CSV_HEADERS, CSV_FILE, CANDIDATES_CACHE,
     REQUEST_TIMEOUT, REQUEST_DELAY, MAX_RETRIES, USER_AGENT,
     ensure_paths_exist,
 )
@@ -158,6 +158,39 @@ def parse_shard(xml: str) -> list:
     return out
 
 
+def save_candidates(path: Path, candidates: list) -> None:
+    """Ghi danh sách candidate ra JSONL (snapshot của lần gather, dedup theo url)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    seen = set()
+    with open(path, "w", encoding="utf-8") as f:
+        for c in candidates:
+            u = c.get("url")
+            if not u or u in seen:
+                continue
+            seen.add(u)
+            f.write(json.dumps(c, ensure_ascii=False) + "\n")
+
+
+def load_candidates(path: Path) -> list:
+    """Đọc candidate cache (JSONL), dedup theo url."""
+    out, seen = [], set()
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                c = json.loads(line)
+            except Exception:  # noqa: BLE001
+                continue
+            u = c.get("url")
+            if not u or u in seen:
+                continue
+            seen.add(u)
+            out.append(c)
+    return out
+
+
 def classify_one(cand: dict, sections_set: set) -> dict:
     """Fetch 1 bài → trả {section, title, lead}. section='' nếu không thuộc sections."""
     h = _fetch_once(cand["url"])
@@ -261,34 +294,45 @@ class CafefNewsCrawler:
         return self.counters
 
     # --- backfill mode (sitemap shards) ---
-    def crawl_backfill(self, from_date, end_date=None, max_articles=0, workers=6):
+    def crawl_backfill(self, from_date, end_date=None, max_articles=0, workers=6,
+                       refresh=False, cache_file=CANDIDATES_CACHE):
         end_date = end_date or datetime.now(HN_TZ).date()
         sections_set = set(self.sections)
-        print(f"=== CAFEF BACKFILL {from_date} -> {end_date} | sections={self.sections} | workers={workers} ===")
-        shards = shards_in_range(from_date, end_date)
-        print(f"  shards in range: {len(shards)}")
+        print(f"=== CAFEF BACKFILL {from_date} -> {end_date} | sections={self.sections} | "
+              f"workers={workers} | refresh={refresh} ===")
 
-        # 1) gom candidates (chưa seen, trong khoảng ngày)
-        candidates = []
-        for i, s in enumerate(shards, 1):
-            xml = fetch(s)
-            if not xml:
-                print(f"  [shard {i}/{len(shards)}] fetch fail: {s}")
-                continue
-            for art in parse_shard(xml):
-                u = art["url"]
-                if ".chn" not in u or u in self.seen:
+        # 1) Danh sách candidate: load từ cache nếu có (resume rẻ), ngược lại quét shard + cache.
+        #    Cache lưu TẤT cả candidate (không lọc seen) để tái dùng khi seen thay đổi.
+        if cache_file.exists() and not refresh:
+            candidates = load_candidates(cache_file)
+            print(f"  candidates from cache: {len(candidates)}  ({cache_file})")
+        else:
+            shards = shards_in_range(from_date, end_date)
+            print(f"  shards in range: {len(shards)}; gathering (mất ~15-20 phút)...")
+            candidates = []
+            for i, s in enumerate(shards, 1):
+                xml = fetch(s)
+                if not xml:
+                    print(f"  [shard {i}/{len(shards)}] fetch fail: {s}")
                     continue
-                try:
-                    d = datetime.fromisoformat(art["lastmod"]).date()
-                except Exception:  # noqa: BLE001
-                    d = None
-                if d and (d < from_date or d > end_date):
-                    continue
-                candidates.append(art)
-            if i % 20 == 0:
-                print(f"  [shard {i}/{len(shards)}] candidates so far: {len(candidates)}")
-        print(f"  total unseen candidates: {len(candidates)}")
+                for art in parse_shard(xml):
+                    if ".chn" not in art["url"]:
+                        continue
+                    try:
+                        d = datetime.fromisoformat(art["lastmod"]).date()
+                    except Exception:  # noqa: BLE001
+                        d = None
+                    if d and (d < from_date or d > end_date):
+                        continue
+                    candidates.append(art)
+                if i % 20 == 0:
+                    print(f"  [shard {i}/{len(shards)}] candidates so far: {len(candidates)}")
+            print(f"  total candidates gathered: {len(candidates)}")
+            save_candidates(cache_file, candidates)
+            print(f"  cached -> {cache_file}  (lần sau dùng cache, bỏ qua quét shard)")
+
+        todo = [c for c in candidates if c["url"] not in self.seen]
+        print(f"  unseen candidates: {len(todo)}  (already collected: {len(candidates) - len(todo)})")
 
         # 2) classify + thu thập song song
         kept = out_section = fail = 0
@@ -296,7 +340,7 @@ class CafefNewsCrawler:
         batch = []
         t0 = time.time()
         with ThreadPoolExecutor(max_workers=workers) as ex:
-            fut_to_cand = {ex.submit(classify_one, c, sections_set): c for c in candidates}
+            fut_to_cand = {ex.submit(classify_one, c, sections_set): c for c in todo}
             for fut in as_completed(fut_to_cand):
                 c = fut_to_cand[fut]
                 processed += 1
@@ -321,7 +365,7 @@ class CafefNewsCrawler:
                     kept += 1
                     if len(batch) >= 200:
                         self._append(batch)
-                        print(f"  saved kept={kept} (processed {processed}/{len(candidates)}) [{time.time()-t0:.0f}s]")
+                        print(f"  saved kept={kept} (processed {processed}/{len(todo)}) [{time.time()-t0:.0f}s]")
                         batch = []
                 elif not res["section"]:
                     out_section += 1
@@ -330,7 +374,7 @@ class CafefNewsCrawler:
                         f.cancel()
                     break
                 if processed % 1000 == 0:
-                    print(f"  progress processed={processed}/{len(candidates)} kept={kept} out_section={out_section} fail={fail} [{time.time()-t0:.0f}s]")
+                    print(f"  progress processed={processed}/{len(todo)} kept={kept} out_section={out_section} fail={fail} [{time.time()-t0:.0f}s]")
         if batch:
             self._append(batch)
 
@@ -378,6 +422,8 @@ def main():
     ap.add_argument("--end-date", type=str, default=None, help="backfill đến YYYY-MM-DD (default: hôm nay)")
     ap.add_argument("--max-articles", type=int, default=0, help="cap số bài thu thập (0=∞)")
     ap.add_argument("--workers", type=int, default=6, help="số luồng fetch song song (backfill)")
+    ap.add_argument("--refresh-shards", action="store_true",
+                    help="bỏ cache candidate, quét lại sitemap shards (lấy bài mới publish sau lần cache)")
     args = ap.parse_args()
 
     sections = args.sections or DEFAULT_SECTIONS
@@ -391,7 +437,8 @@ def main():
     if args.backfill:
         from_d = _parse_date(args.from_date, datetime.strptime("2016-01-01", "%Y-%m-%d").date())
         end_d = _parse_date(args.end_date, datetime.now(HN_TZ).date())
-        crawler.crawl_backfill(from_d, end_d, max_articles=args.max_articles, workers=args.workers)
+        crawler.crawl_backfill(from_d, end_d, max_articles=args.max_articles,
+                               workers=args.workers, refresh=args.refresh_shards)
     else:
         crawler.crawl_daily(test=args.test)
 

@@ -18,6 +18,9 @@ BASE_URL = "https://cafef.vn"
 DATA_PATH = PROJECT_ROOT / os.getenv("CAFEF_DATA_PATH", "data")
 LOG_PATH = PROJECT_ROOT / os.getenv("LOG_PATH", "logs")
 CSV_FILE = PROJECT_ROOT / os.getenv("CAFEF_CSV_FILE", "data/cafef_articles.csv")
+# Cache danh sách <url,lastmod,title> lấy từ sitemap shards, để resume backfill không
+# phải quét lại 757 shard (~15-20 phút) mỗi lần. Xoá file hoặc --refresh-shards để build lại.
+CANDIDATES_CACHE = DATA_PATH / "cafef_candidates.jsonl"
 
 # Section slug -> nhãn (theo skill: CK + Tài chính + Nhận định).
 # Cafef không có section "tai-chinh" hay "nhan-dinh" (404); map sang slug thật
