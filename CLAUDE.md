@@ -115,10 +115,12 @@ Flags: `--start-date/--end-date` (per-report filter trong window mặc định),
 `DOWNLOAD_PDF=false` (mặc định `.env`) = chỉ metadata, bỏ download + delay → crawl nhanh nhất. Bật `DOWNLOAD_PDF=true` để tải PDF.
 Luôn set `PYTHONUTF8=1` trên Windows (CSV luôn UTF-8 BOM).
 
-## Trạng thái (2026-07-05)
+## Trạng thái (2026-07-06)
 - ✅ Pagination (JS `#report-paging`), ✅ Captcha pause 5 phút + retry 3 lần, ✅ Download (browser UA + retry + `context.request.get()`), ✅ Date-bounded crawl, ✅ `--max-pages`/`--start-page`, ✅ `DOWNLOAD_PDF` toggle (default false = metadata-only nhanh), ✅ **Window-crawl `--from-date`** (lấy dữ liệu cũ qua date filter — listing mặc định khoá ~1 năm), ✅ `merge_csv.py` (gộp backfill song song).
 - **Dataset Vietstock**: `data/vnstock_articles.csv` = **14.825 reports unique** (theo `pdf_url`; gộp `data.csv` + `data_archive.csv` + `data_2021_2025.csv` + re-crawl 2015–2018), **2001–2026**, **2.336 PDF** (chỉ 2026; 2001-2025 metadata-only).
-- **News datasets** (cột `source`, schema chung): `cafef_articles.csv` ~3.348 (daily RSS tích lũy; **backfill sâu bị cafef throttle ở mọi concurrency** — workers=4 vẫn 0 kept — nên defer, dựa vào daily RSS), `ssi_articles.csv` ~1.860 (đã đủ ~217 trang), `hsc_articles.csv` ~6 (HSC ít + **không pub_date**), `vndirect_articles.csv` ~967 (đã đủ 4 category company/sector/strategy/economics-note, 2016–2026, Playwright-stealth).
+- **News datasets** (cột `source`, schema chung): `cafef_articles.csv` ~3.450 (daily RSS tích lũy; **deep backfill KHÔNG khả thi** — cafef throttle IP + sitemap không tag section → classify-all cost, xem `docs/anti-throttle.md`), `ssi_articles.csv` 1.859 (đã đủ ~217 trang), `hsc_articles.csv` 6 (HSC ít + **không pub_date**), `vndirect_articles.csv` 967 (đã đủ 4 category, archive chỉ từ 2016). **Gộp** `news_articles.csv` = 6.282 rows (`merge_news.py`).
+- **Vietstock verify (2026-07-06)**: re-crawl 2008-2025 → **không miss hệ thống** (2016 là transient cô lập). Dataset 14.825 tin cậy.
+- **Hằng ngày**: Task Scheduler `CrawlDailyNews` @ 05:00 chạy `run_daily_all.ps1` (crawl tất cả nguồn + `merge_news` + `morning_digest` → `data/digest_YYYY-MM-DD.md` đọc trước 6h). `cafef_crawler` có sẵn proxy xoay vòng (`CAFEF_USE_PROXY` + `proxies.txt`, 10 Webshare).
 - ✅ **Gap 2006-2007 = gap THẬT của site** (verify 2026-07-04: date filter trả ~0) — không sửa được.
 - ✅ **Backfill-miss 2015-2016 đã lấp**: re-crawl từng window rồi gộp (2016: 18→387, 2015: 450→513; 2017/2018 vốn đủ). Nguyên nhân: captcha/timeout **tạm thời** trong lần chạy dài `--from-date 2001`, KHÔNG phải bug logic mọi window. `crawl_by_windows()` đã thêm **retry navigate/apply + cảnh báo window 0-yield**.
 - ⚠️ **stray-date**: **ĐÃ FIX** (2026-07-05) — `extract_report_links` fallback `date_str` từ `now()` → `""`. Card thiếu date không còn bị gán ngày crawl.
