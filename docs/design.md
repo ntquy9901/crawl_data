@@ -173,7 +173,7 @@ override vài hook → thêm nguồn mới = 1 file ~50 dòng. File: `base_news_
 |---|---|---|---|---|
 | **SSI** | `ssi_crawler.py` | PDF bulletins (Bản Tin Thị Trường) | Không | Listing-complete (title+lead+date+pdf link trong listing → không fetch từng bài); `?page=N`, ~217 trang |
 | **HSC** | `hsc_crawler.py` | HTML article (Research Insights) | Không | Next.js SSR, listing 1 trang (daily-only); **không lộ publish date** → cột `pub_date` rỗng (HSC site limitation) |
-| **VNDIRECT** | *(chưa build)* | HTML + PDF | — | **Cloudflare 403** với plain HTTP → cần Playwright (xem §3); chưa build |
+| **VNDIRECT** | `vndirect_crawler.py` | research notes (HTML card) | Không (stealth bypass CF) | **Cloudflare + JS-render** → Playwright-stealth (override `fetch`); listing-complete (card `news-item`: title+url+date+category+lead); sequence (workers=1); `--category company/sector/strategy/economics-note` |
 
 **Output:** `data/ssi_articles.csv`, `data/hsc_articles.csv` (cùng schema, cột `source`).
 

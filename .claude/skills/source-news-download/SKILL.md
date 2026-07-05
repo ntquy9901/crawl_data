@@ -39,5 +39,5 @@ Dự án `crawl_data` đang hiện thực hoá từng nhóm nguồn ở trên:
 - **Tin tức thị trường hằng ngày từ Cafef** → `cafef_crawler.py`: dùng `cafef.vn/<section>.rss` (chạy hằng ngày) + `cafef.vn/<section>.chn?page=N` (backfill). Section = `thi-truong-chung-khoan`, `tai-chinh-ngan-hang`, `vi-mo-dau-tu`.
 - **SSI** (Bản Tin Thị Trường — PDF) → `ssi_crawler.py` ✅ đã cào (listing-complete, `?page=N`).
 - **HSC** (Research Insights — article HTML) → `hsc_crawler.py` ✅ đã cào (daily-only; HSC không lộ publish date → cột `pub_date` rỗng).
-- **VNDIRECT** → **Cloudflare chặn** plain HTTP (403), cần Playwright — chưa build.
+- **VNDIRECT** (research notes) → `vndirect_crawler.py` ✅ đã cào (Playwright-stealth vượt Cloudflare; listing-complete; `--category company/sector/strategy/economics-note`).
 - Cả SSI/HSC dùng khung chung `base_news_crawler.py` (`BaseNewsCrawler`, Template Method) — thêm nguồn = 1 subclass nhỏ. Chi tiết: `docs/design.md` §3 (Playwright) + §4 (framework).
