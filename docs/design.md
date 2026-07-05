@@ -159,7 +159,29 @@ VNDIRECT trả **403** với `requests` (Cloudflare "Just a moment") → cần P
 
 ---
 
-## 4. Vị trí dữ liệu & file
+## 4. News crawler framework — `BaseNewsCrawler` (SSI / HSC / VNDIRECT)
+
+Khung chung (Template Method) cho crawler tin tức/báo cáo **plain HTTP**. Subclass chỉ
+override vài hook → thêm nguồn mới = 1 file ~50 dòng. File: `base_news_crawler.py`.
+
+**Hooks (subclass ghi đè):** `source` (→ cột `source`), `listing_url(page)`, `parse_listing(html,page)` → items, `parse_article(html,item)` → fields, `next_page(cur,html)`.
+**Flow chung (base):** listing → parse → dedup theo `url` (resume không lấy lại) → fetch song song (`--workers`) → append theo lô (`--batch`) → audit log `logs/<source>_audit.log`.
+**Modes:** `--latest` (tin mới nhất / daily), `--range --from-date --end-date` (khoảng ngày). **Schema** có cột `source` bắt buộc (lưu vết nguồn).
+
+**Subclass đã build:**
+| Nguồn | File | Kiểu | Login | Đặc điểm |
+|---|---|---|---|---|
+| **SSI** | `ssi_crawler.py` | PDF bulletins (Bản Tin Thị Trường) | Không | Listing-complete (title+lead+date+pdf link trong listing → không fetch từng bài); `?page=N`, ~217 trang |
+| **HSC** | `hsc_crawler.py` | HTML article (Research Insights) | Không | Next.js SSR, listing 1 trang (daily-only); **không lộ publish date** → cột `pub_date` rỗng (HSC site limitation) |
+| **VNDIRECT** | *(chưa build)* | HTML + PDF | — | **Cloudflare 403** với plain HTTP → cần Playwright (xem §3); chưa build |
+
+**Output:** `data/ssi_articles.csv`, `data/hsc_articles.csv` (cùng schema, cột `source`).
+
+**Reuse cho dự án khác:** copy `base_news_crawler.py` + viết 1 subclass override `source`/`listing_url`/`parse_listing`/`parse_article`. Nếu site Cloudflare/JS → dùng Playwright (§3) thay `requests`.
+
+---
+
+## 5. Vị trí dữ liệu & file
 
 ```
 data/

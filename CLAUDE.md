@@ -75,6 +75,7 @@ Cào "Báo cáo phân tích" từ `https://finance.vietstock.vn/bao-cao-phan-tic
 - `config.py` — constants từ `.env` (`CAPTCHA_PAUSE_MINUTES=5`, `CAPTCHA_MAX_RETRIES=3`, `RANDOM_DELAY` 3–8s, `DOWNLOAD_PDF=false`, paths, CSV_HEADERS).
 - `merge_csv.py` — gộp nhiều CSV backfill song song vào `data/data.csv`, dedup theo `pdf_url`, ưu tiên row có PDF. `python merge_csv.py --inputs <files> [--dry-run]`.
 - `cafef_crawler.py` + `cafef_config.py` — crawler tin tức Cafef (sibling của Vietstock): daily RSS (`--daily`) + backfill sitemap shards (`--backfill`, classify section bằng breadcrumb). Self-contained (riêng dedup, không đụng `utils/dedup.py`). Output `data/cafef_articles.csv`.
+- `base_news_crawler.py` + `ssi_crawler.py` + `hsc_crawler.py` — khung crawler tin tức **tổng quát** (Template Method: subclass override `source`/`listing_url`/`parse_listing`/`parse_article`/`next_page`; base lo flow + dedup + workers/batch + audit log + resume). SSI = PDF bulletins (listing-complete), HSC = Research Insights article. Output `data/<source>_articles.csv` (cột `source` ghi nguồn). VNDIRECT bị **Cloudflare** (cần Playwright, chưa build).
 - `utils/anti_bot.py` — stealth browser, `safe_goto`/`safe_click`, `human_like_scroll`, `get_random_user_agent`.
 - `utils/dedup.py` — `DedupManager` (check URL/ID trong CSV).
 - `utils/proxy_manager.py` — xoay vòng proxy (`USE_PROXY=false`, chưa dùng thật).
