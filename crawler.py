@@ -327,8 +327,10 @@ class VietstockCrawler:
                                 source = line.split(':')[-1].strip()
                                 break
 
-                        # Extract date (pattern: DD/MM/YYYY or _DD/MM/YYYY_)
-                        date_str = datetime.now().strftime('%d/%m/%Y')
+                        # Extract date (pattern: DD/MM/YYYY or _DD/MM/YYYY_).
+                        # Fallback = rỗng (KHÔNG dùng today) để tránh bug stray-date
+                        # (card thiếu date rõ bị gán ngày crawl → sai cột date).
+                        date_str = ""
                         import re
                         for line in lines:
                             # Match _DD/MM/YYYY_ format

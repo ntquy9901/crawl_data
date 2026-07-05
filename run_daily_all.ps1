@@ -22,6 +22,10 @@ $env:CSV_FILE = "data/vnstock_articles.csv"
 Run "Vietstock recent (>= $yesterday)" "python crawler.py --start-date $yesterday --headless true"
 $env:CSV_FILE = $null
 
+# Gộp tất cả nguồn + tạo digest sáng
+Run "Merge news_articles.csv" "python merge_news.py"
+Run "Morning digest (2 ngày)" "python morning_digest.py --days 2"
+
 Write-Host ""
 Write-Host "=== DONE daily all ==="
 Get-ChildItem data\*_articles.csv | ForEach-Object {
