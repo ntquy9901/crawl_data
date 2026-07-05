@@ -64,7 +64,11 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ---
 
 ## Mục tiêu
-Cào "Báo cáo phân tích" từ `https://finance.vietstock.vn/bao-cao-phan-tich` — lưu metadata vào `data/data.csv` và tải PDF về `data/pdf/`. Chạy định kỳ qua Windows Task Scheduler lúc 2h sáng. Phục vụ thu thập dữ liệu phân tích **2001–2026** (metadata toàn kỳ; PDF ưu tiên kỳ gần).
+Thu thập dữ liệu phân tích/tin tức thị trường CK Việt Nam đa nguồn (theo skill `.claude/skills/source-news-download`):
+- **Vietstock** — "Báo cáo phân tích" PDF từ `finance.vietstock.vn/bao-cao-phan-tich` → `data/vnstock_articles.csv` + `data/pdf/`. Metadata toàn kỳ 2001–2026, PDF kỳ gần.
+- **Cafef** — tin tức thị trường hằng ngày (RSS + sitemap backfill) → `data/cafef_articles.csv`.
+- **SSI / HSC / VNDIRECT** — research/notes CTCK → `data/{ssi,hsc,vndirect}_articles.csv` (qua khung `base_news_crawler.py`).
+Mỗi crawler có cột `source` ghi nguồn (lưu vết/phân loại) + dedup riêng (resumable). Chạy định kỳ qua Windows Task Scheduler (`run_daily_all.ps1`).
 
 ## Stack & ràng buộc
 - Python 3.11 (async) + Playwright (chromium, stealth) + playwright-stealth + fake-useragent; requests (download), pandas (CSV), python-dotenv, aiohttp.
@@ -75,13 +79,14 @@ Cào "Báo cáo phân tích" từ `https://finance.vietstock.vn/bao-cao-phan-tic
 - `config.py` — constants từ `.env` (`CAPTCHA_PAUSE_MINUTES=5`, `CAPTCHA_MAX_RETRIES=3`, `RANDOM_DELAY` 3–8s, `DOWNLOAD_PDF=false`, paths, CSV_HEADERS).
 - `merge_csv.py` — gộp nhiều CSV backfill song song vào `data/data.csv`, dedup theo `pdf_url`, ưu tiên row có PDF. `python merge_csv.py --inputs <files> [--dry-run]`.
 - `cafef_crawler.py` + `cafef_config.py` — crawler tin tức Cafef (sibling của Vietstock): daily RSS (`--daily`) + backfill sitemap shards (`--backfill`, classify section bằng breadcrumb). Self-contained (riêng dedup, không đụng `utils/dedup.py`). Output `data/cafef_articles.csv`.
-- `base_news_crawler.py` + `ssi_crawler.py` + `hsc_crawler.py` — khung crawler tin tức **tổng quát** (Template Method: subclass override `source`/`listing_url`/`parse_listing`/`parse_article`/`next_page`; base lo flow + dedup + workers/batch + audit log + resume). SSI = PDF bulletins (listing-complete), HSC = Research Insights article, VNDIRECT = research notes qua Playwright-stealth (vượt Cloudflare, listing-complete, `--category`). Output `data/<source>_articles.csv` (cột `source` ghi nguồn).
+- `base_news_crawler.py` — khung crawler tin tức **tổng quát** (Template Method: subclass override `source`/`listing_url`/`parse_listing`/`parse_article`/`next_page`; base lo flow + dedup + `--workers`/`--batch` + audit log `logs/<source>_audit.log` + resume theo url). Mode `--latest` (daily) / `--range --from-date --end-date`.
+- `ssi_crawler.py` (PDF bulletins, listing-complete), `hsc_crawler.py` (Research Insights, daily-only, không có pub_date), `vndirect_crawler.py` (research notes, **Playwright-stealth vượt Cloudflare**, `--category company/sector/strategy/economics-note`) — 3 subclass. Output `data/<source>_articles.csv` (cột `source` ghi nguồn).
 - `utils/anti_bot.py` — stealth browser, `safe_goto`/`safe_click`, `human_like_scroll`, `get_random_user_agent`.
 - `utils/dedup.py` — `DedupManager` (check URL/ID trong CSV).
 - `utils/proxy_manager.py` — xoay vòng proxy (`USE_PROXY=false`, chưa dùng thật).
 - `utils/alert.py` — phát hiện captcha (keyword + HTTP 403/429/5xx). **CHỈ log, chưa gửi Gmail.**
-- `run_crawler.ps1` + `task_scheduler.xml` — Windows Task Scheduler 2h/day.
-- `data/data.csv`, `data/pdf/`, `logs/`.
+- `run_crawler.ps1` + `task_scheduler.xml` — Windows Task Scheduler Vietstock 2h/day. `run_daily_all.ps1` — chạy tất cả crawler tin tức (cafef --daily + ssi/hsc/vndirect --latest) 1 lệnh.
+- `data/`: `vnstock_articles.csv` (14.825), `cafef_articles.csv`, `ssi/hsc/vndirect_articles.csv`, `cafef_candidates.jsonl` (cache backfill cafef), `pdf/`, `logs/`.
 
 ## Chạy
 ```bash
@@ -94,14 +99,25 @@ PYTHONUTF8=1 python crawler.py --from-date 2001-01-01 --headless true
 # Chạy song song ra CSV riêng rồi gộp:
 CSV_FILE=data/backfill.csv PYTHONUTF8=1 python crawler.py --from-date 2021-01-01 --headless true
 python merge_csv.py --inputs data/backfill.csv
+
+# News crawlers (daily + backfill):
+PYTHONUTF8=1 python cafef_crawler.py --daily                                    # Cafef RSS hằng ngày
+PYTHONUTF8=1 python cafef_crawler.py --backfill --from-date 2016-01-01 --workers 4   # Cafef backfill (sitemap, workers thấp tránh throttle)
+PYTHONUTF8=1 python ssi_crawler.py --latest                                     # SSI mới nhất
+PYTHONUTF8=1 python ssi_crawler.py --range --max-pages 220                      # SSI backfill toàn bộ
+PYTHONUTF8=1 python hsc_crawler.py --latest                                     # HSC (daily-only)
+PYTHONUTF8=1 python vndirect_crawler.py --latest --category company-note        # VNDIRECT (Playwright; cần cho Cloudflare)
+PYTHONUTF8=1 python vndirect_crawler.py --range --max-pages 80 --category company-note
+powershell -ExecutionPolicy Bypass -File run_daily_all.ps1                      # chạy tất cả daily 1 lệnh
 ```
 Flags: `--start-date/--end-date` (per-report filter trong window mặc định), `--from-date` (window-crawl tới dữ liệu cũ, `--window-months N` mặc định 6), `--max-pages N` (0=∞), `--test`, `--headless true|false`.
 `DOWNLOAD_PDF=false` (mặc định `.env`) = chỉ metadata, bỏ download + delay → crawl nhanh nhất. Bật `DOWNLOAD_PDF=true` để tải PDF.
 Luôn set `PYTHONUTF8=1` trên Windows (CSV luôn UTF-8 BOM).
 
-## Trạng thái (2026-07-04)
+## Trạng thái (2026-07-05)
 - ✅ Pagination (JS `#report-paging`), ✅ Captcha pause 5 phút + retry 3 lần, ✅ Download (browser UA + retry + `context.request.get()`), ✅ Date-bounded crawl, ✅ `--max-pages`/`--start-page`, ✅ `DOWNLOAD_PDF` toggle (default false = metadata-only nhanh), ✅ **Window-crawl `--from-date`** (lấy dữ liệu cũ qua date filter — listing mặc định khoá ~1 năm), ✅ `merge_csv.py` (gộp backfill song song).
-- **Dataset hiện tại**: `data/vnstock_articles.csv` = **14.825 reports unique** (theo `pdf_url`; gộp `data.csv` + `data_archive.csv` + `data_2021_2025.csv` + re-crawl 2015–2018), **2001–2026**, **2.336 PDF** (chỉ 2026; 2001-2025 metadata-only).
+- **Dataset Vietstock**: `data/vnstock_articles.csv` = **14.825 reports unique** (theo `pdf_url`; gộp `data.csv` + `data_archive.csv` + `data_2021_2025.csv` + re-crawl 2015–2018), **2001–2026**, **2.336 PDF** (chỉ 2026; 2001-2025 metadata-only).
+- **News datasets** (cột `source`, schema chung): `cafef_articles.csv` ~3.3k (backfill 2016→ đang chạy; **cafef throttle nếu workers cao — dùng workers=4**), `ssi_articles.csv` ~1.860 (đã đủ ~217 trang), `hsc_articles.csv` ~6 (HSC ít + **không pub_date**), `vndirect_articles.csv` đang backfill (Playwright-stealth, 4 category).
 - ✅ **Gap 2006-2007 = gap THẬT của site** (verify 2026-07-04: date filter trả ~0) — không sửa được.
 - ✅ **Backfill-miss 2015-2016 đã lấp**: re-crawl từng window rồi gộp (2016: 18→387, 2015: 450→513; 2017/2018 vốn đủ). Nguyên nhân: captcha/timeout **tạm thời** trong lần chạy dài `--from-date 2001`, KHÔNG phải bug logic mọi window. `crawl_by_windows()` đã thêm **retry navigate/apply + cảnh báo window 0-yield**.
 - ⚠️ **stray-date**: còn trong code nhưng **tỷ lệ thấp ~0,5%** (re-crawl 2016: 1/388 dòng). KHÔNG phải nguyên nhân gap hay inflate 2026 (2026 = window PDF gần thật). Không còn ưu tiên cao.
