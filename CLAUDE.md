@@ -85,7 +85,7 @@ Mỗi crawler có cột `source` ghi nguồn (lưu vết/phân loại) + dedup r
 - `utils/dedup.py` — `DedupManager` (check URL/ID trong CSV).
 - `utils/proxy_manager.py` — xoay vòng proxy (`USE_PROXY=false`, chưa dùng thật).
 - `utils/alert.py` — phát hiện captcha (keyword + HTTP 403/429/5xx). **CHỈ log, chưa gửi Gmail.**
-- `run_crawler.ps1` + `task_scheduler.xml` — Windows Task Scheduler Vietstock 2h/day. `run_daily_all.ps1` — chạy tất cả crawler tin tức (cafef --daily + ssi/hsc/vndirect --latest) 1 lệnh.
+- `run_crawler.ps1` + `task_scheduler.xml` — Windows Task Scheduler Vietstock 2h/day. `run_daily_all.ps1` — chạy tất cả nguồn (cafef --daily + ssi/hsc/vndirect --latest + Vietstock recent) 1 lệnh; **đã cài Task Scheduler `CrawlDailyNews` @ 05:00 daily** (xong trước 6h sáng). `docs/anti-throttle.md` — research SOTA chống throttle + design proxy cho Cafef.
 - `data/`: `vnstock_articles.csv` (14.825), `cafef_articles.csv`, `ssi/hsc/vndirect_articles.csv`, `cafef_candidates.jsonl` (cache backfill cafef), `pdf/`, `logs/`.
 
 ## Chạy

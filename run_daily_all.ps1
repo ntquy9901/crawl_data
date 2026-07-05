@@ -16,6 +16,12 @@ foreach ($cat in @("company-note", "sector-note", "strategy-note", "economics-no
     Run "VNDIRECT latest ($cat)" "python vndirect_crawler.py --latest --category $cat --csv data/vndirect_articles.csv"
 }
 
+# Vietstock: báo cáo phân tích mới nhất (publish 17-20h hôm trước → đã có trước 6h sáng)
+$yesterday = (Get-Date).AddDays(-1).ToString("yyyy-MM-dd")
+$env:CSV_FILE = "data/vnstock_articles.csv"
+Run "Vietstock recent (>= $yesterday)" "python crawler.py --start-date $yesterday --headless true"
+$env:CSV_FILE = $null
+
 Write-Host ""
 Write-Host "=== DONE daily all ==="
 Get-ChildItem data\*_articles.csv | ForEach-Object {
