@@ -23,7 +23,7 @@ from datetime import datetime
 from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
 
-from base_news_crawler import BaseNewsCrawler, CSV_HEADERS, UA, strip_html, short_id, now_iso
+from base_news_crawler import UA, BaseNewsCrawler, now_iso, short_id, strip_html
 
 CATEGORIES = ["company-note", "sector-note", "strategy-note", "economics-note"]
 LAUNCH_ARGS = [
@@ -111,7 +111,10 @@ class VndirectCrawler(BaseNewsCrawler):
             m_mon = re.search(r"<sup>/(\d+)</sup>", card)
             m_yr = re.search(r"Year\s*(\d+)", card)
             m_lead = re.search(r"news-des[^>]*>(.*?)</div>", card, re.S)
-            pub = f"{m_day.group(1)}/{m_mon.group(1)}/{m_yr.group(1)}" if (m_day and m_mon and m_yr) else ""
+            pub = (
+                f"{m_day.group(1)}/{m_mon.group(1)}/{m_yr.group(1)}"
+                if (m_day and m_mon and m_yr) else ""
+            )
             items.append({
                 "url": m_href.group(1),
                 "title": strip_html(m_title.group(1)) if m_title else "",
@@ -156,7 +159,8 @@ class VndirectCrawler(BaseNewsCrawler):
             try:
                 return datetime.strptime(s, "%Y-%m-%d").date()
             except ValueError:
-                print(f"! ngày không hợp lệ: {s}"); sys.exit(2)
+                print(f"! ngày không hợp lệ: {s}")
+                sys.exit(2)
 
         start, end = pd(args.from_date), pd(args.end_date)
         c = cls(category=args.category, csv_file=args.csv,

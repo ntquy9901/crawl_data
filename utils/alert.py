@@ -4,11 +4,10 @@ Detects captcha/bot detection and logs alerts
 """
 
 import logging
-from typing import Optional
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
-from config import CAPTCHA_KEYWORDS, LOG_PATH
+from config import CAPTCHA_KEYWORDS
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +67,7 @@ class AlertManager:
         self,
         subject: str,
         body: str,
-        screenshot_path: Optional[Path] = None
+        screenshot_path: Path | None = None
     ) -> bool:
         """
         Log an alert to file and console
@@ -98,7 +97,7 @@ class AlertManager:
         self,
         url: str,
         reason: str,
-        screenshot_path: Optional[Path] = None
+        screenshot_path: Path | None = None
     ) -> bool:
         """
         Log captcha detection alert
@@ -154,8 +153,8 @@ Context:
 
 
 # Global instances
-_detector: Optional[CaptchaDetector] = None
-_alert: Optional[AlertManager] = None
+_detector: CaptchaDetector | None = None
+_alert: AlertManager | None = None
 
 
 def get_detector() -> CaptchaDetector:

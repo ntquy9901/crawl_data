@@ -3,16 +3,15 @@ Anti-Bot module for Vietstock Crawler
 Provides stealth features, random delays, and browser automation utilities
 """
 
+import asyncio
 import random
 import time
-import asyncio
-from typing import Optional
+
 from fake_useragent import UserAgent
-from playwright.async_api import async_playwright, Browser, BrowserContext, Page
+from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 from playwright_stealth import Stealth
 
-from config import RANDOM_DELAY_MIN, RANDOM_DELAY_MAX, TIMEOUT, DEFAULT_USER_AGENTS
-
+from config import DEFAULT_USER_AGENTS, RANDOM_DELAY_MAX, RANDOM_DELAY_MIN, TIMEOUT
 
 # Initialize user agent rotator
 try:
@@ -22,7 +21,7 @@ except Exception:
     ua = None
 
 
-def random_delay(min_sec: Optional[float] = None, max_sec: Optional[float] = None) -> None:
+def random_delay(min_sec: float | None = None, max_sec: float | None = None) -> None:
     """
     Sleep for a random delay between min and max seconds
 

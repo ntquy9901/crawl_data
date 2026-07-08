@@ -12,7 +12,7 @@ Dùng: python ssi_crawler.py --latest              # tin mới nhất
 
 import re
 
-from base_news_crawler import BaseNewsCrawler, strip_html, short_id, now_iso
+from base_news_crawler import BaseNewsCrawler, now_iso, short_id, strip_html
 
 
 class SsiCrawler(BaseNewsCrawler):

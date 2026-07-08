@@ -49,7 +49,8 @@ def main():
     has_pdf = (df['pdf_filename'].astype(str).str.strip() != '').astype(int)
     df = df.assign(_has_pdf=has_pdf).sort_values('_has_pdf', ascending=False)
     before = len(df)
-    df = df.drop_duplicates(subset='pdf_url', keep='first').drop(columns='_has_pdf').reset_index(drop=True)
+    df = (df.drop_duplicates(subset='pdf_url', keep='first')
+          .drop(columns='_has_pdf').reset_index(drop=True))
     print(f'Dedup by pdf_url: {before} -> {len(df)} (removed {before - len(df)})')
 
     if args.dry_run:

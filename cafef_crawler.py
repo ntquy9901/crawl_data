@@ -26,10 +26,19 @@ from pathlib import Path
 import requests
 
 from cafef_config import (
-    BASE_URL, RSS_URL_FMT, SITEMAP_INDEX,
-    CAFEF_SECTIONS, DEFAULT_SECTIONS, CSV_HEADERS, CSV_FILE, CANDIDATES_CACHE,
-    REQUEST_TIMEOUT, REQUEST_DELAY, MAX_RETRIES, USER_AGENT,
-    USE_PROXY, PROXY_FILE,
+    CAFEF_SECTIONS,
+    CANDIDATES_CACHE,
+    CSV_FILE,
+    CSV_HEADERS,
+    DEFAULT_SECTIONS,
+    MAX_RETRIES,
+    PROXY_FILE,
+    REQUEST_DELAY,
+    REQUEST_TIMEOUT,
+    RSS_URL_FMT,
+    SITEMAP_INDEX,
+    USE_PROXY,
+    USER_AGENT,
     ensure_paths_exist,
 )
 
@@ -68,7 +77,7 @@ def _load_proxy_pool():
     if not USE_PROXY or not PROXY_FILE.exists():
         return []
     out = []
-    with open(PROXY_FILE, "r", encoding="utf-8") as f:
+    with open(PROXY_FILE, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line and not line.startswith("#") and ":" in line:
@@ -95,7 +104,8 @@ def _proxy_kwargs():
 
 
 def _fetch_once(url: str, timeout: int = 15):
-    """GET 1 lần, ngắn — cho backfill (rất nhiều request). Dùng proxy xoay vòng nếu CAFEF_USE_PROXY."""
+    """GET 1 lần, ngắn — cho backfill (rất nhiều request).
+    Dùng proxy xoay vòng nếu CAFEF_USE_PROXY."""
     try:
         r = requests.get(url, headers=UA_HEADERS, timeout=timeout, **_proxy_kwargs())
         if r.status_code == 200:
@@ -207,7 +217,7 @@ def save_candidates(path: Path, candidates: list) -> None:
 def load_candidates(path: Path) -> list:
     """Đọc candidate cache (JSONL), dedup theo url."""
     out, seen = [], set()
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -270,7 +280,7 @@ class CafefNewsCrawler:
     def _load_seen(self) -> set:
         seen = set()
         if self.csv_file.exists():
-            with open(self.csv_file, "r", encoding="utf-8-sig", newline="") as f:
+            with open(self.csv_file, encoding="utf-8-sig", newline="") as f:
                 for row in csv.DictReader(f):
                     u = row.get("article_url")
                     if u:
@@ -365,7 +375,10 @@ class CafefNewsCrawler:
             print(f"  cached -> {cache_file}  (lần sau dùng cache, bỏ qua quét shard)")
 
         todo = [c for c in candidates if c["url"] not in self.seen]
-        print(f"  unseen candidates: {len(todo)}  (already collected: {len(candidates) - len(todo)})")
+        print(
+            f"  unseen candidates: {len(todo)}  "
+            f"(already collected: {len(candidates) - len(todo)})"
+        )
 
         # 2) classify + thu thập song song
         kept = out_section = fail = 0
@@ -398,7 +411,10 @@ class CafefNewsCrawler:
                     kept += 1
                     if len(batch) >= 200:
                         self._append(batch)
-                        print(f"  saved kept={kept} (processed {processed}/{len(todo)}) [{time.time()-t0:.0f}s]")
+                        print(
+                            f"  saved kept={kept} (processed {processed}/{len(todo)}) "
+                            f"[{time.time()-t0:.0f}s]"
+                        )
                         batch = []
                 elif not res["section"]:
                     out_section += 1
@@ -407,7 +423,10 @@ class CafefNewsCrawler:
                         f.cancel()
                     break
                 if processed % 1000 == 0:
-                    print(f"  progress processed={processed}/{len(todo)} kept={kept} out_section={out_section} fail={fail} [{time.time()-t0:.0f}s]")
+                    print(
+                        f"  progress processed={processed}/{len(todo)} kept={kept} "
+                        f"out_section={out_section} fail={fail} [{time.time()-t0:.0f}s]"
+                    )
         if batch:
             self._append(batch)
 
@@ -452,11 +471,13 @@ def main():
     # backfill
     ap.add_argument("--from-date", type=str, default=None,
                     help="backfill từ YYYY-MM-DD (default 2016-01-01 = sitemap floor)")
-    ap.add_argument("--end-date", type=str, default=None, help="backfill đến YYYY-MM-DD (default: hôm nay)")
+    ap.add_argument("--end-date", type=str, default=None,
+                    help="backfill đến YYYY-MM-DD (default: hôm nay)")
     ap.add_argument("--max-articles", type=int, default=0, help="cap số bài thu thập (0=∞)")
     ap.add_argument("--workers", type=int, default=6, help="số luồng fetch song song (backfill)")
     ap.add_argument("--refresh-shards", action="store_true",
-                    help="bỏ cache candidate, quét lại sitemap shards (lấy bài mới publish sau lần cache)")
+                    help="bỏ cache candidate, quét lại sitemap shards "
+                         "(lấy bài mới publish sau lần cache)")
     args = ap.parse_args()
 
     sections = args.sections or DEFAULT_SECTIONS

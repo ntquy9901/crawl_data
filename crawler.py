@@ -15,27 +15,37 @@ import asyncio
 import calendar
 import logging
 import random
-import re
 import sys
 import time
-from datetime import datetime, date
+from datetime import date, datetime
 from pathlib import Path
-from typing import Optional, List, Dict
+
 import pandas as pd
 
 # Import modules
 from config import (
-    TARGET_URL, BASE_URL, PDF_PATH, CSV_FILE, CSV_HEADERS,
-    ensure_paths_exist, TIMEOUT, RANDOM_DELAY_MIN, RANDOM_DELAY_MAX,
-    LOG_PATH, CAPTCHA_PAUSE_MINUTES, CAPTCHA_MAX_RETRIES, DOWNLOAD_PDF
+    BASE_URL,
+    CAPTCHA_MAX_RETRIES,
+    CAPTCHA_PAUSE_MINUTES,
+    CSV_FILE,
+    CSV_HEADERS,
+    DOWNLOAD_PDF,
+    LOG_PATH,
+    PDF_PATH,
+    RANDOM_DELAY_MAX,
+    RANDOM_DELAY_MIN,
+    TARGET_URL,
+    ensure_paths_exist,
+)
+from utils.alert import get_alert, get_detector
+from utils.anti_bot import (
+    create_stealth_browser,
+    get_random_user_agent,
+    human_like_scroll,
+    safe_goto,
 )
 from utils.dedup import get_dedup_manager
-from utils.anti_bot import (
-    create_stealth_browser, safe_goto, safe_click,
-    human_like_scroll, random_delay, get_random_user_agent
-)
-from utils.proxy_manager import get_proxy_manager, should_use_proxy
-from utils.alert import get_detector, get_alert
+from utils.proxy_manager import get_proxy_manager
 
 
 # Setup logging
@@ -71,14 +81,14 @@ class VietstockCrawler:
     """Main crawler class for Vietstock analysis reports"""
 
     def __init__(self, headless: bool = True, test_mode: bool = False, max_pages: int = 0,
-                 start_date: Optional[date] = None, end_date: Optional[date] = None,
-                 start_page: int = 1, window_ranges: Optional[List] = None):
+                 start_date: date | None = None, end_date: date | None = None,
+                 start_page: int = 1, window_ranges: list | None = None):
         self.headless = headless
         self.test_mode = test_mode
         self.max_pages = max_pages  # 0 = unlimited
         self.start_date = start_date  # lower bound (inclusive); None = no lower bound
         self.end_date = end_date      # upper bound (inclusive); None = no upper bound
-        self.start_page = max(1, start_page)  # page to start extracting from (fast-forward past earlier pages)
+        self.start_page = max(1, start_page)  # fast-forward past earlier pages
         self.window_ranges = window_ranges or []  # date windows (DD/MM/YYYY) for old-data back-fill
         self.browser = None
         self.context = None
@@ -93,7 +103,7 @@ class VietstockCrawler:
         self.downloaded_count = 0
 
     @staticmethod
-    def parse_report_date(date_str: str) -> Optional[date]:
+    def parse_report_date(date_str: str) -> date | None:
         """
         Parse a report date string into a date object.
 
@@ -167,7 +177,9 @@ class VietstockCrawler:
                 logger.warning(f"CAPTCHA/Bot detection detected: {reason}")
 
                 # Take screenshot
-                screenshot_path = LOG_PATH / f"captcha_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                screenshot_path = (
+                    LOG_PATH / f"captcha_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                )
                 await self.page.screenshot(path=str(screenshot_path))
 
                 # Send alert
@@ -235,7 +247,7 @@ class VietstockCrawler:
         )
         return False
 
-    async def extract_report_links(self) -> List[Dict]:
+    async def extract_report_links(self) -> list[dict]:
         """
         Extract report links from current page
 
@@ -275,7 +287,9 @@ class VietstockCrawler:
             # Strategy 2: Find all links that might be download links
             try:
                 # Look for links with text "Tải về" or "Download"
-                download_links = await self.page.query_selector_all('a:has-text("Tải về"), a:has-text("Download")')
+                download_links = await self.page.query_selector_all(
+                    'a:has-text("Tải về"), a:has-text("Download")'
+                )
                 logger.info(f"Found {len(download_links)} download links")
 
                 for link in download_links:
@@ -366,7 +380,7 @@ class VietstockCrawler:
 
         return reports
 
-    async def download_pdf(self, report: Dict) -> Optional[str]:
+    async def download_pdf(self, report: dict) -> str | None:
         """
         Download PDF from report URL
 
@@ -468,7 +482,7 @@ class VietstockCrawler:
                             found_pdf_url = await pdf_elem.get_attribute('href')
                             if found_pdf_url:
                                 break
-                    except:
+                    except Exception:
                         continue
 
                 if not found_pdf_url:
@@ -495,7 +509,9 @@ class VietstockCrawler:
             logger.error(f"Error downloading PDF for {title_ascii}: {e}")
             return None
 
-    async def _download_pdf_playwright(self, pdf_url: str, pdf_path: Path, filename: str) -> Optional[str]:
+    async def _download_pdf_playwright(
+        self, pdf_url: str, pdf_path: Path, filename: str
+    ) -> str | None:
         """
         Fallback method to download PDF using Playwright
 
@@ -608,7 +624,8 @@ class VietstockCrawler:
             try:
                 await self.page.wait_for_function(
                     """(old) => {
-                        const el = document.querySelector('#report-content a[href*="bao-cao-phan-tich"]');
+                        const sel = '#report-content a[href*="bao-cao-phan-tich"]';
+                        const el = document.querySelector(sel);
                         return el && el.getAttribute('href') !== old;
                     }""",
                     arg=old_sig,
@@ -627,7 +644,7 @@ class VietstockCrawler:
             logger.error(f"Error handling pagination: {e}")
             return False
 
-    def _load_pending_files(self) -> List[Path]:
+    def _load_pending_files(self) -> list[Path]:
         """Return sorted list of pending CSV files (data_pending_*.csv)."""
         return sorted(CSV_FILE.parent.glob('data_pending_*.csv'))
 
@@ -648,11 +665,12 @@ class VietstockCrawler:
         merged = pd.concat(frames, ignore_index=True) if count else df
         return merged, count, files
 
-    def _write_pending(self, data: List[Dict]) -> Path:
+    def _write_pending(self, data: list[dict]) -> Path:
         """Append a batch to a pending file (used when the main CSV is locked)."""
         pending = CSV_FILE.parent / f"data_pending_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         df_new = pd.DataFrame(data)
-        df_new.to_csv(pending, mode='a', index=False, header=not pending.exists(), encoding='utf-8-sig')
+        df_new.to_csv(pending, mode='a', index=False,
+                      header=not pending.exists(), encoding='utf-8-sig')
         return pending
 
     def _recover_pending(self) -> None:
@@ -680,7 +698,7 @@ class VietstockCrawler:
         except Exception as e:
             logger.error(f"Could not recover pending files: {e}")
 
-    def save_to_csv(self, data: List[Dict]):
+    def save_to_csv(self, data: list[dict]):
         """
         Save crawled data to CSV, robust against the CSV being open in another
         program (Windows exclusive lock -> PermissionError).
@@ -737,7 +755,7 @@ class VietstockCrawler:
                 logger.error(f"Error saving to CSV: {e}")
                 return
 
-    async def _collect_reports(self, reports: List[Dict]):
+    async def _collect_reports(self, reports: list[dict]):
         """Process one page's reports: optional date-range filter, dedup,
         download (if DOWNLOAD_PDF), build records, mark seen.
 
@@ -754,7 +772,10 @@ class VietstockCrawler:
             # Date-range filter (per-report; not used in window-crawl mode)
             if self.start_date and rdate and rdate < self.start_date:
                 title_ascii = report['title'].encode('ascii', 'replace').decode('ascii')
-                logger.info(f"Skipping (before start-date {self.start_date.isoformat()}): {title_ascii}")
+                logger.info(
+                    f"Skipping (before start-date {self.start_date.isoformat()}): "
+                    f"{title_ascii}"
+                )
                 self.skipped_count += 1
                 continue
             if self.end_date and rdate and rdate > self.end_date:
@@ -860,10 +881,16 @@ class VietstockCrawler:
                 window_ready = False
                 for attempt in (1, 2):
                     if not await self.navigate_to_target():
-                        logger.warning(f"navigate_to_target failed (attempt {attempt}) for window {wf}-{wt}")
+                        logger.warning(
+                            f"navigate_to_target failed (attempt {attempt}) "
+                            f"for window {wf}-{wt}"
+                        )
                         continue
                     if not await self.apply_date_window(wf, wt):
-                        logger.warning(f"apply_date_window failed (attempt {attempt}) for window {wf}-{wt}")
+                        logger.warning(
+                            f"apply_date_window failed (attempt {attempt}) "
+                            f"for window {wf}-{wt}"
+                        )
                         continue
                     window_ready = True
                     break
@@ -903,7 +930,9 @@ class VietstockCrawler:
 
         except Exception as e:
             logger.error(f"Window crawl error: {e}")
-            await self.alert.log_error_alert(str(e), f"Page URL: {self.page.url if self.page else 'N/A'}")
+            await self.alert.log_error_alert(
+                str(e), f"Page URL: {self.page.url if self.page else 'N/A'}"
+            )
 
         finally:
             await self.close_browser()
@@ -982,7 +1011,8 @@ class VietstockCrawler:
 
                 # Date-bound stop: reports are sorted newest-first, so once a
                 # whole page is older than start_date everything after is too.
-                if self.start_date and parsed_dates and all(d < self.start_date for d in parsed_dates):
+                if (self.start_date and parsed_dates
+                        and all(d < self.start_date for d in parsed_dates)):
                     logger.info(
                         f"Reached page fully before start-date "
                         f"{self.start_date.isoformat()} - stopping crawl"
@@ -1004,7 +1034,9 @@ class VietstockCrawler:
         except Exception as e:
             logger.error(f"Crawl error: {e}")
             # Send error alert
-            await self.alert.log_error_alert(str(e), f"Page URL: {self.page.url if self.page else 'N/A'}")
+            await self.alert.log_error_alert(
+                str(e), f"Page URL: {self.page.url if self.page else 'N/A'}"
+            )
 
         finally:
             await self.close_browser()
@@ -1028,7 +1060,7 @@ def _month_add(d: date, months: int) -> date:
     return date(total // 12, total % 12 + 1, 1)
 
 
-def _build_windows(from_date: date, to_date: date, months_step: int) -> List[tuple]:
+def _build_windows(from_date: date, to_date: date, months_step: int) -> list[tuple]:
     """Split [from_date, to_date] into consecutive (DD/MM/YYYY, DD/MM/YYYY)
     windows of `months_step` months each (aligned to month starts). Used by
     --from-date mode so the listing date filter can be applied period by period."""

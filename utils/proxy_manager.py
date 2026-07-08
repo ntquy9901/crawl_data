@@ -3,10 +3,10 @@ Proxy Manager module for Vietstock Crawler
 Handles proxy rotation and health checks
 """
 
-import random
 import asyncio
+import random
 from pathlib import Path
-from typing import Optional, List
+
 import aiohttp
 
 from config import PROXY_FILE, USE_PROXY
@@ -17,9 +17,9 @@ class ProxyManager:
 
     def __init__(self, proxy_file: Path = PROXY_FILE):
         self.proxy_file = proxy_file
-        self.proxies: List[str] = []
-        self.dead_proxies: List[str] = []
-        self.current_proxy: Optional[str] = None
+        self.proxies: list[str] = []
+        self.dead_proxies: list[str] = []
+        self.current_proxy: str | None = None
 
     def load_proxies(self) -> None:
         """Load proxies from file"""
@@ -31,7 +31,7 @@ class ProxyManager:
             return
 
         try:
-            with open(self.proxy_file, 'r', encoding='utf-8') as f:
+            with open(self.proxy_file, encoding='utf-8') as f:
                 for line in f:
                     line = line.strip()
                     # Skip empty lines and comments
@@ -45,7 +45,7 @@ class ProxyManager:
         except Exception as e:
             print(f"Error loading proxies: {e}")
 
-    def get_random_proxy(self) -> Optional[str]:
+    def get_random_proxy(self) -> str | None:
         """
         Get a random proxy from the healthy list
 
@@ -80,7 +80,7 @@ class ProxyManager:
             self.dead_proxies.append(proxy)
             print(f"Marked proxy as dead: {proxy}")
 
-    def get_proxy_dict(self, proxy: Optional[str] = None) -> Optional[dict]:
+    def get_proxy_dict(self, proxy: str | None = None) -> dict | None:
         """
         Convert proxy string to dictionary format for requests/playwright
 
@@ -130,7 +130,10 @@ class ProxyManager:
                 async with session.get(
                     'http://httpbin.org/ip',
                     proxy=proxy_dict['server'],
-                    proxy_basic_auth=(proxy_dict.get('username'), proxy_dict.get('password')) if 'username' in proxy_dict else None,
+                    proxy_basic_auth=(
+                        (proxy_dict.get('username'), proxy_dict.get('password'))
+                        if 'username' in proxy_dict else None
+                    ),
                     timeout=timeout
                 ) as response:
                     return response.status == 200
@@ -148,7 +151,7 @@ class ProxyManager:
         tasks = [self.check_proxy(proxy) for proxy in self.proxies]
         results = await asyncio.gather(*tasks)
 
-        for proxy, is_alive in zip(self.proxies, results):
+        for proxy, is_alive in zip(self.proxies, results, strict=False):
             if not is_alive:
                 self.mark_dead(proxy)
 
@@ -172,7 +175,7 @@ class ProxyManager:
 
 
 # Global proxy manager instance
-_proxy_manager: Optional[ProxyManager] = None
+_proxy_manager: ProxyManager | None = None
 
 
 def get_proxy_manager() -> ProxyManager:

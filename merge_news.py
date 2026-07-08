@@ -4,6 +4,7 @@ theo schema thống nhất (cột `source` ghi nguồn). Dedup theo url.
 """
 import sys
 from pathlib import Path
+
 import pandas as pd
 
 DATA = Path(__file__).parent / "data"
@@ -14,7 +15,10 @@ SOURCES = {
     "hsc":      ("hsc_articles.csv",      {}),
     "vndirect": ("vndirect_articles.csv", {}),
 }
-UNIFIED = ["source", "title", "category", "pub_date", "url", "author", "lead", "pdf_url", "collected_at"]
+UNIFIED = [
+    "source", "title", "category", "pub_date",
+    "url", "author", "lead", "pdf_url", "collected_at",
+]
 
 
 def main():
@@ -34,7 +38,8 @@ def main():
         print(f"  {src}: {len(df)} rows")
 
     if not frames:
-        print("! không có nguồn nào"); sys.exit(1)
+        print("! không có nguồn nào")
+        sys.exit(1)
     all_df = pd.concat(frames, ignore_index=True)
     all_df = all_df.drop_duplicates(subset=["url"], keep="first").reset_index(drop=True)
     out = DATA / "news_articles.csv"
