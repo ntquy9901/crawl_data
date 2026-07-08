@@ -17,7 +17,7 @@ SOURCES = {
 }
 UNIFIED = [
     "source", "title", "category", "pub_date",
-    "url", "author", "lead", "pdf_url", "collected_at",
+    "url", "author", "lead", "body", "pdf_url", "collected_at",
 ]
 
 

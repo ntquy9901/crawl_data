@@ -27,7 +27,7 @@ HN_TZ = timezone(timedelta(hours=7))
 
 CSV_HEADERS = [
     "id", "source", "title", "category", "pub_date", "url",
-    "author", "lead", "pdf_url", "pdf_filename", "collected_at",
+    "author", "lead", "pdf_url", "pdf_filename", "collected_at", "body",
 ]
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -184,6 +184,7 @@ class BaseNewsCrawler:
             "lead": extra.get("lead", ""),
             "pdf_url": extra.get("pdf_url", ""),
             "pdf_filename": extra.get("pdf_filename", ""),
+            "body": extra.get("body", ""),
             "collected_at": now_iso(),
         }
 
