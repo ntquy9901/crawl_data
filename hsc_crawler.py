@@ -13,6 +13,7 @@ import html
 import re
 
 from base_news_crawler import BaseNewsCrawler
+from utils.body_extractor import extract_html_body
 
 
 class HscCrawler(BaseNewsCrawler):
@@ -46,7 +47,9 @@ class HscCrawler(BaseNewsCrawler):
         m = re.search(r'"datePublished"\s*:\s*"([^"]+)"', html_text)
         if m:
             pub = m.group(1)[:19]  # ISO
-        return {"title": title, "lead": lead, "pub_date": pub, "author": "HSC"}
+        body = extract_html_body(html_text, self.source)
+        return {"title": title, "lead": lead, "pub_date": pub,
+                "author": "HSC", "body": body}
 
     def next_page(self, cur: int, html_text: str):
         return None  # HSC listing 1 trang → daily-only
