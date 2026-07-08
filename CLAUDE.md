@@ -133,3 +133,29 @@ Luôn set `PYTHONUTF8=1` trên Windows (CSV luôn UTF-8 BOM).
 3. Playwright `page.goto()` tới URL download → lỗi "Download is starting". Dùng `context.request.get()`.
 4. **Dedup đánh dấu "đã thấy" ngay cả khi download fail** → re-run không retry bản fail. Cần xoá row khỏi CSV trước khi crawl lại.
 5. **CHƯA fix — extraction gán `date`=hôm nay khi card thiếu date rõ** → cột `date` sai (phồng năm gần, hút năm xa). `pdf_url` vẫn đúng. Xem Trạng thái.
+
+
+# Project-Specific Quality Assurance Rules
+
+## Definition of Done
+A task is done only when ALL are true:
+- Code directly satisfies the requested change.
+- **Tests:** when behavior changes, write/run unit tests and ensure **>= 80% of the CHANGED lines are covered** (diff-coverage, NOT total): `pytest --cov=<module> --cov-report=xml` then `diff-cover coverage.xml --fail-under=80` (add `diff-cover` to dev deps; commit the change first so the diff is measurable).
+- **Checks run:** `pytest -q` and `uvx ruff check .` — or mark `Not run` with a reason. Never claim a command passed unless it actually ran.
+- **ruff exclude:** exclude vendored skill/data folders via `[tool.ruff]` in `pyproject.toml`: `extend-exclude = [".claude", "data"]`.
+- **Code review (always):** run `/code-review` and address findings before marking done. **Required for every change — including non-production (docs/config/trial) — no exception.** Summarize the result + actions taken in the report.
+- **Summary report:** create `docs/reports/<timestamp>_summaryOfUpdate_report.md` where `timestamp` = `YYYY-MM-DD_HHMM` (e.g. `2026-07-08_1430_summaryOfUpdate_report.md`).
+- No unrelated refactor or formatting was included.
+- **Smoke tests (gate):** at least one smoke test (`tests/smoke/` or `tests/test_smoke_*.py`, marked `@pytest.mark.smoke`) runs one happy-path of a crawler/script — e.g. a pure function on a saved sample HTML/PDF, or `crawler.py --test`. `pytest -m smoke` **must pass before done**. Register the marker in `pyproject` `[tool.pytest.ini_options] markers`. Smoke tests must NOT hit live sites (use saved fixtures under `tests/fixtures/`); if a live-network check is unavoidable, mark `Not run` with a reason.
+- **Impact analysis:** before a non-trivial change, identify its blast radius — find all callers/dependents/consumers (grep the symbol/function; check entry points: `merge_news.py`, `run_daily_all.ps1`, Task Scheduler `CrawlDailyNews`). Summarize what's affected + what was verified in the report. Flag risk if blast radius is high and not fully test-covered.
+- **Similar check:** after a fix/pattern change, grep the same idiom/duplicate across the repo (e.g. the same parse pattern shared by cafef/ssi/hsc/vndirect crawlers). Apply the same change where applicable, or list remaining instances as a follow-up. Don't fix one of N copies silently.
+
+## Summary report (generated per change)
+When a change is done, **generate** a concise, context-appropriate markdown summary — do not fill a rigid template. Save it as `docs/reports/<timestamp>_summaryOfUpdate_report.md` (`timestamp` = `YYYY-MM-DD_HHMM`).
+- Write it to fit THIS change: include what's relevant and omit what's not — **except code review, which is always required and always summarized.** (Add a "Smoke" section when relevant.)
+- Cover, as applicable: what changed, files changed (path -> purpose), tests + coverage %, `/code-review` result + actions, commands actually run, risks/follow-ups, a Definition-of-Done checklist.
+- Be honest: state only what truly happened; write `Not run` (with reason) for anything skipped.
+
+## Python Rules
+Use: Python 3.13 (per `.python-version`), `uv` for env/deps, `pytest` for tests, `ruff` for lint/format, type hints for public functions, `pathlib` for paths.
+Avoid: bare `except`; mutable default arguments; hardcoded absolute local paths; secrets in code (use `.env`); unbounded module-level caches/globals; notebook-only production logic.
