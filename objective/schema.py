@@ -82,11 +82,12 @@ def checksum_normalize(text: str) -> str:
     """
     if not text:
         return ""
-    # NFC first so diacritics compare equal regardless of source encoding path
-    # (HTTP NFC vs Playwright NFD drift — adversarial finding).
+    # Order MUST match the docstring / AD-6: NFC → lowercase → strip tags →
+    # collapse ws. Lowercasing before the tag strip future-proofs any
+    # case-sensitive tag logic and keeps cross-source conformance stable.
     s = unicodedata.normalize("NFC", str(text))
+    s = s.lower()                # lowercase first (NFC NFC vs NFD drift — adversarial)
     s = _TAG_RE.sub(" ", s)      # strip HTML tags
-    s = s.lower()                # case-insensitive
     s = _WS_RE.sub(" ", s).strip()  # collapse whitespace
     return s
 
@@ -97,15 +98,17 @@ def compute_checksum(raw_text: str) -> str:
 
 
 # Tracking params stripped during URL canonicalization (AD-13).
-_TRACKING_PREFIXES = ("utm_", "gclid", "fbclid", "mc_", "ref", "ref_src")
+_TRACKING_EXACT = frozenset({"gclid", "fbclid", "ref", "ref_src"})  # exact-match only
+_TRACKING_PREFIXES = ("utm_", "mc_")  # prefix-match
 
 
 def canonicalize_url(url: str) -> str:
     """Canonical URL for per-source identity + resume dedup (AD-13).
 
-    Lowercase scheme/host, drop fragment, sort query params, strip tracking
-    params (utm_*, gclid, fbclid, ...) so ``?a=1&b=2`` and ``?b=2&a=1`` (and
-    tracking-laden variants) resolve to one key.
+    Lowercase scheme/host, drop fragment, lowercase + sort query keys, strip
+    tracking params (utm_*, mc_*, gclid, fbclid, ref, ref_src — EXACT for the
+    bare tokens so ``reference``/``ref_id``/``refresh`` are retained), so
+    ``?a=1&b=2`` and ``?b=2&a=1`` (and ``?Page=1``/``?page=1``) resolve to one key.
     """
     if not url:
         return ""
@@ -116,16 +119,14 @@ def canonicalize_url(url: str) -> str:
     scheme = u.scheme.lower()
     netloc = u.netloc.lower()
     path = u.path.rstrip("/") or "/"  # treat "" and "/" alike; collapse trailing /
-    # Sort + filter query params.
+    # Sort + filter query params. Keys lowercased (servers are case-insensitive on
+    # keys); VALUES kept as-is (legitimately case-sensitive).
     if u.query:
         pairs = urllib.parse.parse_qsl(u.query, keep_blank_values=False)
         kept = sorted(
-            (k, v) for k, v in pairs
-            if not any(k.lower() == p or k.lower().startswith(_TRACKING_PREFIXES)
-                       for p in ("gclid", "fbclid"))
-            and not k.lower().startswith("utm_")
-            and not k.lower().startswith("mc_")
-            and k.lower() not in ("ref", "ref_src")
+            (k.lower(), v) for k, v in pairs
+            if k.lower() not in _TRACKING_EXACT
+            and not any(k.lower().startswith(p) for p in _TRACKING_PREFIXES)
         )
         query = urllib.parse.urlencode(kept)
     else:
@@ -144,3 +145,26 @@ def make_document_id(source: str, url: str) -> str:
 
 def is_valid_event_type(value: str) -> bool:
     return value in EventType.ALL
+
+
+def serialize_attachment_urls(urls: list[str]) -> str:
+    """Canonical CSV serialization for the ``attachment_urls`` list (AD-1).
+
+    JSON — survives a URL containing ``|`` (which a pipe-join would split) and
+    CSV quoting cleanly. Inverse of :func:`deserialize_attachment_urls`.
+    """
+    import json
+    return json.dumps(list(urls or []), ensure_ascii=False)
+
+
+def deserialize_attachment_urls(value) -> list[str]:
+    """Inverse of :func:`serialize_attachment_urls` (used by build_objective)."""
+    import json
+    if not value:
+        return []
+    try:
+        out = json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    return [str(x) for x in out] if isinstance(out, list) else []
+

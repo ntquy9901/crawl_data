@@ -130,7 +130,7 @@ def test_append_writes_objective_csv(tmp_path):
     # attachment_urls serialized as pipe-separated
     data = list(csv.DictReader((tmp_path / "rec.csv").open(encoding="utf-8-sig")))
     assert data[0]["document_id"] == row["document_id"]
-    assert data[0]["attachment_urls"] == "https://x.vn/a.pdf|https://x.vn/b.pdf"
+    assert data[0]["attachment_urls"] == '["https://x.vn/a.pdf", "https://x.vn/b.pdf"]'
 
 
 def test_load_seen_reads_url_column(tmp_path):

@@ -131,6 +131,12 @@ class BaseNewsCrawler:
         return None
 
     # ---------------- CSV / dedup (resume) ----------------
+    def _dedup_key(self, url: str) -> str:
+        """Resume-dedup key for a URL. Default = the URL itself (identity).
+        Subclasses (e.g. BaseObjectiveCrawler) override to canonicalize so
+        reordered query params / tracking suffixes don't defeat dedup."""
+        return url
+
     def _load_seen(self) -> set:
         seen = set()
         if self.csv_file.exists():
@@ -139,7 +145,7 @@ class BaseNewsCrawler:
                     for row in csv.DictReader(f):
                         u = row.get("url")
                         if u:
-                            seen.add(u)
+                            seen.add(self._dedup_key(u))
             except Exception as e:  # noqa: BLE001
                 print(f"warn: load seen: {e}")
         return seen
@@ -195,6 +201,7 @@ class BaseNewsCrawler:
             u = it.get("url")
             if not u:
                 continue
+            u = self._dedup_key(u)
             d = parse_date(it.get("pub_date"))
             if start_date and d and d < start_date:
                 self.counters["out_of_range"] += 1
@@ -225,7 +232,7 @@ class BaseNewsCrawler:
                     if not rec:
                         self.counters["fail"] += 1
                         continue
-                    self.seen.add(rec["url"])
+                    self.seen.add(self._dedup_key(rec["url"]))
                     kept_batch.append(rec)
                     self.counters["kept"] += 1
                     if self.max_articles and self.counters["kept"] >= self.max_articles:

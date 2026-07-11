@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import csv
 from dataclasses import fields as dataclass_fields
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta, timezone
 from pathlib import Path
 
 from base_news_crawler import (
@@ -35,17 +35,18 @@ from objective.schema import (
     ObjectiveRecord,  # noqa: F401  (re-exported for adapters)
     canonicalize_url,
     compute_checksum,
+    deserialize_attachment_urls,
     make_document_id,
+    serialize_attachment_urls,
 )
 
 _VN_TZ = timezone(timedelta(hours=7))  # Vietnam — AD-3 assumption for no-offset sources
+_MIDNIGHT = time(0, 0)
 
 # Canonical CSV columns = the ObjectiveRecord field set (AD-1), in declaration order.
 OBJECTIVE_HEADERS = [f.name for f in dataclass_fields(ObjectiveRecord)]
 
-_DATEONLY_FMTS = ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y")
-_NAIVE_DT_FMTS = ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S")
-_TZ_DT_FMTS = ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d %H:%M:%S%z")
+_DATEONLY_FMTS = ("%d/%m/%Y", "%d-%m-%Y")  # non-ISO date-only (ISO handled by fromisoformat)
 
 
 def now_utc() -> str:
@@ -56,33 +57,30 @@ def now_utc() -> str:
 def to_utc(value) -> str:
     """Normalize an arbitrary source timestamp to canonical UTC (AD-3).
 
-    Rules (the adversarial conformance): tz-aware (offset or ``Z``) → UTC;
-    naive (no offset) → assume Vietnam +07 then convert; date-only →
-    ``YYYY-MM-DDT00:00:00Z``; unparseable/empty → ``""`` (``build_objective``
-    rejects non-canonical rows).
+    Rules: tz-aware (offset or ``Z``, incl. fractional seconds) → UTC; naive
+    (no offset) → assume Vietnam +07 then convert, EXCEPT a naive midnight which
+    uses the date-only form (so ``2026-07-10`` == ``2026-07-10 00:00:00`` ==
+    ``2026-07-10T00:00:00``); date-only → ``YYYY-MM-DDT00:00:00Z``; unparseable
+    → ``""`` (``build_objective`` rejects non-canonical rows).
     """
     if not value:
         return ""
     s = str(value).strip()
-    # 1. full datetime with offset/Z
-    for fmt in _TZ_DT_FMTS:
-        try:
-            dt = datetime.strptime(s, fmt)
-            return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-        except ValueError:
-            pass
-    # 2. naive datetime → assume +07
-    for fmt in _NAIVE_DT_FMTS:
-        try:
-            dt = datetime.strptime(s, fmt).replace(tzinfo=_VN_TZ)
-            return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-        except ValueError:
-            pass
-    # 3. date-only → midnight UTC
+    # 1. ISO-8601 via fromisoformat — handles offset, 'Z', fractional seconds (3.11+).
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        dt = None
+    if dt is not None:
+        if dt.tzinfo is None:
+            if dt.time() == _MIDNIGHT:
+                return f"{dt.date().isoformat()}T00:00:00Z"  # date-only canonical (consistency)
+            dt = dt.replace(tzinfo=_VN_TZ)  # naive non-midnight → assume +07
+        return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # 2. non-ISO date-only formats (dd/mm/yyyy, dd-mm-yyyy)
     for fmt in _DATEONLY_FMTS:
         try:
-            d = datetime.strptime(s, fmt).date()
-            return f"{d.isoformat()}T00:00:00Z"
+            return f"{datetime.strptime(s, fmt).date().isoformat()}T00:00:00Z"
         except ValueError:
             pass
     return ""
@@ -117,7 +115,7 @@ class BaseObjectiveCrawler(BaseNewsCrawler):
                 row = dict(r)
                 att = row.get("attachment_urls")
                 if isinstance(att, list):
-                    row["attachment_urls"] = "|".join(att)
+                    row["attachment_urls"] = serialize_attachment_urls(att)
                 w.writerow({k: row.get(k, "") for k in OBJECTIVE_HEADERS})
 
     def _load_seen(self) -> set:
@@ -149,6 +147,8 @@ class BaseObjectiveCrawler(BaseNewsCrawler):
 
     # ---- the core override: fetch → parse → universe-filter → build row ----
     def _fetch_and_parse(self, item: dict) -> dict | None:
+        if not self._keep_item(item):  # pre-fetch universe filter (skip before network)
+            return None
         url = item["url"]
         html_text = self.fetch(url)
         if not html_text:
@@ -158,10 +158,21 @@ class BaseObjectiveCrawler(BaseNewsCrawler):
             return None
         return self._build_row(url, html_text, payload, item)
 
+    def _dedup_key(self, url: str) -> str:
+        """Resume dedup on the CANONICAL url (AD-13) — fixes raw-vs-canonical
+        mismatch with the inherited ``_process_items`` seen-set."""
+        return canonicalize_url(url)
+
+    def _keep_item(self, item: dict) -> bool:
+        """Pre-fetch universe filter (AD-4/5). Default True; Tier-1 adapters
+        whose listing already carries company_code override to skip non-VN30
+        before the (expensive) network call."""
+        return True
+
     def _keep_payload(self, payload: dict) -> bool:
-        """Universe filter hook (AD-4/5). Default keeps everything; Tier-1
-        adapters override to keep only VN30. Tier-2 leaves this True (null
-        company_code routes to the companion file at build time, AD-14)."""
+        """Post-parse universe filter (AD-4/5). Default True; Tier-1 adapters
+        override to keep only VN30 (covers sources where company_code is only
+        extractable from the detail page)."""
         return True
 
     def _build_row(self, url: str, html_text: str, payload: dict, item: dict) -> dict:
@@ -185,3 +196,28 @@ class BaseObjectiveCrawler(BaseNewsCrawler):
             "checksum": compute_checksum(raw_text),
             "raw_path": self._save_raw(doc_id, html_text),
         }
+
+
+def row_to_objective_record(row: dict) -> ObjectiveRecord:
+    """Re-hydrate an ObjectiveRecord from a CSV row (build_objective uses this).
+
+    Closes the CSV round-trip the foundation's append serializer implies:
+    attachment_urls is JSON-deserialized back to a list."""
+    return ObjectiveRecord(
+        document_id=row.get("document_id", ""),
+        source=row.get("source", ""),
+        source_tier=row.get("source_tier", ""),
+        url=row.get("url", ""),
+        publish_time=row.get("publish_time", ""),
+        crawl_time=row.get("crawl_time", ""),
+        company_code=row.get("company_code", ""),
+        company_name=row.get("company_name", ""),
+        title=row.get("title", ""),
+        raw_text=row.get("raw_text", ""),
+        language=row.get("language", "vi"),
+        category=row.get("category", ""),
+        event_type=row.get("event_type", "") or EventType.OTHER,
+        attachment_urls=deserialize_attachment_urls(row.get("attachment_urls", "")),
+        checksum=row.get("checksum", ""),
+        raw_path=row.get("raw_path", ""),
+    )

@@ -47,7 +47,9 @@ class VsdcCrawler(BaseObjectiveCrawler):
                 continue
             ticker = m.group(1)
             title = f"{ticker}{m.group(2)}: {m.group(3).strip()}"
-            href = a.get("href", "")
+            href = (a.get("href") or "").strip()
+            if not href or href.startswith("#"):
+                continue  # skip anchor placeholders / empty hrefs
             url = href if href.startswith("http") else f"{self.base_url}{href}"
             items.append({
                 "url": url,
@@ -88,4 +90,10 @@ class VsdcCrawler(BaseObjectiveCrawler):
 
     def _keep_payload(self, payload: dict) -> bool:
         code = (payload.get("company_code") or "").upper()
+        return bool(code) and is_vn30(code)
+
+    def _keep_item(self, item: dict) -> bool:
+        # Pre-fetch VN30 filter (AD-4/5): company_code is known from the listing
+        # title, so skip non-VN30 issuers before the network call.
+        code = (item.get("company_code") or "").upper()
         return bool(code) and is_vn30(code)

@@ -17,6 +17,7 @@ _RULES: list[tuple[str, str]] = [
     ("nghị quyết hđqt", EventType.BOARD_RESOLUTION),
     ("phát hành thêm cổ phiếu", EventType.STOCK_ISSUANCE),
     ("phát hành cổ phiếu", EventType.STOCK_ISSUANCE),
+    ("tăng vốn điều lệ", EventType.STOCK_ISSUANCE),
     ("chia cổ phiếu", EventType.STOCK_SPLIT),
     ("stock split", EventType.STOCK_SPLIT),
     ("phát hành quyền mua", EventType.RIGHTS_ISSUE),
@@ -28,7 +29,8 @@ _RULES: list[tuple[str, str]] = [
     ("công bố thông tin giao dịch", EventType.INSIDER_TRADING),
     ("sáp nhập", EventType.MA),
     ("hợp nhất", EventType.MA),
-    ("mua lại", EventType.MA),
+    ("mua lại doanh nghiệp", EventType.MA),
+    ("mua lại công ty", EventType.MA),
     ("bổ nhiệm", EventType.EXEC_CHANGE),
     ("bãi nhiệm", EventType.EXEC_CHANGE),
     ("thay đổi nhân sự", EventType.EXEC_CHANGE),
@@ -38,6 +40,7 @@ _RULES: list[tuple[str, str]] = [
     ("trái phiếu", EventType.BOND_ISSUANCE),
     ("coupon", EventType.BOND_ISSUANCE),
     ("cổ tức", EventType.DIVIDEND),
+    ("chi trả cổ tức", EventType.DIVIDEND),
     ("chia tiền mặt", EventType.DIVIDEND),
 ]
 
