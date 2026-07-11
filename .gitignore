@@ -36,3 +36,16 @@ Thumbs.db
 .claude/skills/bmad-*/
 .agents/
 _bmad/config.user.*
+# BMAD per-module installer state (top-level _bmad/config.yaml + module-help.csv committed; subdirs are installer/local)
+_bmad/_config/
+_bmad/bmb/
+_bmad/bmm/
+_bmad/cis/
+_bmad/custom/
+_bmad/scripts/
+_bmad/tea/
+_bmad/config.toml
+
+# Local tooling / data (not this project's source)
+.opencode/
+aggregated/
