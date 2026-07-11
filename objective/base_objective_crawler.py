@@ -147,13 +147,24 @@ class BaseObjectiveCrawler(BaseNewsCrawler):
         except ValueError:
             return str(p)
 
-    # ---- the core override: build an objective row from a fetched page ----
+    # ---- the core override: fetch → parse → universe-filter → build row ----
     def _fetch_and_parse(self, item: dict) -> dict | None:
         url = item["url"]
         html_text = self.fetch(url)
         if not html_text:
             return None
         payload = self.parse_article(html_text, item) or {}
+        if not self._keep_payload(payload):
+            return None
+        return self._build_row(url, html_text, payload, item)
+
+    def _keep_payload(self, payload: dict) -> bool:
+        """Universe filter hook (AD-4/5). Default keeps everything; Tier-1
+        adapters override to keep only VN30. Tier-2 leaves this True (null
+        company_code routes to the companion file at build time, AD-14)."""
+        return True
+
+    def _build_row(self, url: str, html_text: str, payload: dict, item: dict) -> dict:
         raw_text = payload.get("raw_text", "")
         doc_id = make_document_id(self.source, url)
         return {
