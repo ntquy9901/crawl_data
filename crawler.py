@@ -45,6 +45,7 @@ from utils.anti_bot import (
     safe_goto,
 )
 from utils.dedup import get_dedup_manager
+from utils.pdf_helpers import generate_pdf_filename
 from utils.proxy_manager import get_proxy_manager
 
 
@@ -141,25 +142,8 @@ class VietstockCrawler:
         logger.info("Browser closed")
 
     def generate_pdf_filename(self, title: str, date_str: str) -> str:
-        """
-        Generate filename for PDF download
-
-        Args:
-            title: Report title
-            date_str: Report date string
-
-        Returns:
-            Sanitized filename
-        """
-        # Clean title for filename
-        clean_title = title.strip()[:50]  # Limit to 50 chars
-        clean_title = "".join(c for c in clean_title if c.isalnum() or c in (' ', '-', '_'))
-        clean_title = clean_title.replace(' ', '_')
-
-        # Clean date string
-        clean_date = date_str.replace('/', '-').replace(' ', '_')
-
-        return f"{clean_date}_{clean_title}.pdf"
+        """Generate filename for PDF download (delegates to utils.pdf_helpers)."""
+        return generate_pdf_filename(title, date_str)
 
     async def check_for_captcha(self) -> bool:
         """
