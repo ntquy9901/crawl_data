@@ -78,6 +78,13 @@ def test_extract_pdf_body_missing(tmp_path):
     assert extract_pdf_body(tmp_path / "nope.pdf") == ""
 
 
+def test_extract_pdf_body_malformed(tmp_path):
+    """A corrupt PDF must not crash — returns ''."""
+    p = tmp_path / "bad.pdf"
+    p.write_bytes(b"%PDF-1.4\nbroken garbage not a real pdf object tree\n")
+    assert extract_pdf_body(p) == ""
+
+
 # ---------- resolve_pdf_local_path ----------
 def test_resolve_vietstock(tmp_path):
     p = resolve_pdf_local_path("vietstock", {"pdf_filename": "x.pdf"}, data_path=tmp_path)

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -34,8 +35,20 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 HEADERS = {"User-Agent": UA, "Referer": "https://finance.vietstock.vn/"}
 
 
+_DOC_ID_RE = re.compile(r"downloadedoc/(\d+)", re.IGNORECASE)
+
+
 def dest_for(row: dict) -> Path:
-    return PDF_DIR / generate_pdf_filename(row.get("title", ""), row.get("date", ""))
+    """Unique dest per row: {date}_{title}__{doc_id}.pdf.
+
+    doc_id (from pdf_url downloadedoc/{id}) makes the name unique — prevents
+    filename collisions when two reports share the same date + truncated title
+    (which crashed an earlier run via .part contention)."""
+    base = generate_pdf_filename(row.get("title", ""), row.get("date", ""))
+    m = _DOC_ID_RE.search(row.get("pdf_url") or "")
+    if m:
+        return PDF_DIR / f"{base[:-4]}__{m.group(1)}.pdf"
+    return PDF_DIR / base
 
 
 def has_local(row: dict) -> bool:
@@ -118,6 +131,19 @@ def main() -> None:
     for col in ("pdf_filename", "downloaded_at"):
         if col not in fieldnames:
             fieldnames.append(col)
+
+    # Reconcile: recover PDFs saved by a prior (possibly crashed) run under the
+    # OLD naming (no doc_id) whose pdf_filename was never written to the CSV.
+    reconciled = 0
+    for r in rows:
+        if (r.get("pdf_filename") or "").strip() or not (r.get("pdf_url") or "").strip():
+            continue
+        old = PDF_DIR / generate_pdf_filename(r.get("title", ""), r.get("date", ""))
+        if old.exists() and old.stat().st_size > 1000:
+            r["pdf_filename"] = old.name
+            reconciled += 1
+    if reconciled:
+        print(f"reconciled {reconciled} rows to existing on-disk PDFs (prior run)")
 
     # RULE — skip already-downloaded: only rows with pdf_url and no local file
     todo = [r for r in rows if (r.get("pdf_url") or "").strip() and not has_local(r)]

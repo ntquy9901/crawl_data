@@ -131,6 +131,8 @@ def extract_pdf_body(pdf_path: str | Path, max_chars: int = 30000) -> str:
         return ""
     try:
         raw = "\n".join(page.get_text() for page in doc)
+    except Exception:  # noqa: BLE001 — malformed PDF (syntax error / stack overflow)
+        return ""
     finally:
         doc.close()
     if not raw.strip():
