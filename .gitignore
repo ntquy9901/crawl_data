@@ -1,5 +1,8 @@
 # Data & logs (heavy / runtime-regenerable)
-data/
+# data/macro/ là NGOẠI LỆ — commit (nhỏ + khó fetch lại + cần reproduce). Dùng data/*
+# thay vì data/ để git vẫn descend vào data/, rồi re-include data/macro/.
+data/*
+!data/macro/
 logs/
 
 # Secrets / local config
