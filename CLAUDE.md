@@ -71,8 +71,15 @@ Thu thập dữ liệu phân tích/tin tức thị trường CK Việt Nam đa n
 Mỗi crawler có cột `source` ghi nguồn (lưu vết/phân loại) + dedup riêng (resumable). Chạy định kỳ qua Windows Task Scheduler (`run_daily_all.ps1`).
 
 ## Stack & ràng buộc
-- Python 3.11 (async) + Playwright (chromium, stealth) + playwright-stealth + fake-useragent; requests (download), pandas (CSV), python-dotenv, aiohttp.
+- Python 3.13 (async) + Playwright (chromium, stealth) + playwright-stealth + fake-useragent; requests (download), pandas (CSV), python-dotenv, aiohttp, lxml, PyMuPDF. (`uv` env — `.python-version`)
 - **KHÔNG dùng Vietstock JSON API** (giới hạn truy cập) — chỉ browser crawl.
+
+## Crawl design rules
+1. **Song song hóa** (luôn nghĩ tới khi plan/design/code): fetch/parse độc lập phải chạy song song để crawl nhanh — I/O-bound (HTTP) → `ThreadPoolExecutor` (`--workers`); CPU-bound (parse PDF) → `ProcessPoolExecutor`.
+2. **Nhẹ trước, nặng sau**: ưu tiên nội dung nhẹ (HTML head/body, RSS) TRƯỚC nội dung nặng (PDF, Playwright/Cloudflare). Nội dung nặng chạy nền/chạy sau để có kết quả nhanh.
+3. **Config bật/tắt các chức năng tốn thời gian**:
+   - Download nội dung nặng (PDF): `DOWNLOAD_PDF` (`config.py`), `--no-playwright` (backfill scripts).
+   - Head/body/file tách lớp: metadata (head) luôn crawl; body opt-in (`--fetch-body` cafef/vndirect, `scripts/build_vnstock_pdf_raw.py`); daily cafef lead-only (`--daily`). Mỗi lớp chạy độc lập, bật/tắt bằng flag/env.
 
 ## Cấu trúc
 - `crawler.py` — script chính, class `VietstockCrawler`. Flow: `init_browser` → loop {navigate/paginate → `extract_report_links` → `_collect_reports` (date-filter → dedup → `download_pdf` nếu `DOWNLOAD_PDF` → `save_to_csv`)}. Hai mode: `crawl()` (pagination thường, trong window mặc định ~1 năm) và `crawl_by_windows()` (`--from-date` — set filter `#fromDate/#toDate` + click `#btnSearchEDoc` để tới dữ liệu cũ).
@@ -135,27 +142,43 @@ Luôn set `PYTHONUTF8=1` trên Windows (CSV luôn UTF-8 BOM).
 5. **CHƯA fix — extraction gán `date`=hôm nay khi card thiếu date rõ** → cột `date` sai (phồng năm gần, hút năm xa). `pdf_url` vẫn đúng. Xem Trạng thái.
 
 
-# Project-Specific Quality Assurance Rules
+# Project Quality Rules
+
+> Project-agnostic quality gates. Stack specifics live in **Per-project setup** below (the only place). Source: `docs/proposed-repo-CLAUDE.md` (v1.0, 2026-07-09).
 
 ## Definition of Done
 A task is done only when ALL are true:
-- Code directly satisfies the requested change.
-- **Tests:** when behavior changes, write/run unit tests and ensure **>= 80% of the CHANGED lines are covered** (diff-coverage, NOT total): `pytest --cov=<module> --cov-report=xml` then `diff-cover coverage.xml --fail-under=80` (add `diff-cover` to dev deps; commit the change first so the diff is measurable).
-- **Checks run:** `pytest -q` and `uvx ruff check .` — or mark `Not run` with a reason. Never claim a command passed unless it actually ran.
-- **ruff exclude:** exclude vendored skill/data folders via `[tool.ruff]` in `pyproject.toml`: `extend-exclude = [".claude", "data"]`.
-- **Code review (always):** run `/code-review` and address findings before marking done. **Required for every change — including non-production (docs/config/trial) — no exception.** Summarize the result + actions taken in the report.
-- **Summary report:** create `docs/reports/<timestamp>_summaryOfUpdate_report.md` where `timestamp` = `YYYY-MM-DD_HHMM` (e.g. `2026-07-08_1430_summaryOfUpdate_report.md`).
-- No unrelated refactor or formatting was included.
-- **Smoke tests (gate):** at least one smoke test (`tests/smoke/` or `tests/test_smoke_*.py`, marked `@pytest.mark.smoke`) runs one happy-path of a crawler/script — e.g. a pure function on a saved sample HTML/PDF, or `crawler.py --test`. `pytest -m smoke` **must pass before done**. Register the marker in `pyproject` `[tool.pytest.ini_options] markers`. Smoke tests must NOT hit live sites (use saved fixtures under `tests/fixtures/`); if a live-network check is unavoidable, mark `Not run` with a reason.
-- **Impact analysis:** before a non-trivial change, identify its blast radius — find all callers/dependents/consumers (grep the symbol/function; check entry points: `merge_news.py`, `run_daily_all.ps1`, Task Scheduler `CrawlDailyNews`). Summarize what's affected + what was verified in the report. Flag risk if blast radius is high and not fully test-covered.
-- **Similar check:** after a fix/pattern change, grep the same idiom/duplicate across the repo (e.g. the same parse pattern shared by cafef/ssi/hsc/vndirect crawlers). Apply the same change where applicable, or list remaining instances as a follow-up. Don't fix one of N copies silently.
+- Code directly satisfies the requested change; no unrelated refactor.
+- **Tests:** when behavior changes, write/run unit tests and ensure **>= 80% of the CHANGED lines are covered**, measured by **diff-coverage** (NOT total): produce a coverage report for the change, then run a diff-coverage gate. Ensure the change is committed/staged so the diff is measurable. (Commands in Per-project setup.)
+- **Checks run:** run the project's test + lint commands — or mark `Not run` with a reason. Never claim a command passed unless it actually ran.
+- **Lint scope:** exclude vendored / generated / third-party tooling directories from lint.
+- **Code review (always):** run `/code-review` and address findings before marking done. **Required for every change — including non-production (docs/config/scripts) — no exception.** Summarize result + actions in the report.
+- **Summary report:** generate `docs/reports/<YYYY-MM-DD_HHMM>_summaryOfUpdate_report.md` (context-appropriate, not a rigid template).
+- **Smoke (gate):** at least one smoke test (tagged `smoke`) runs one happy-path of a crawler/script on saved fixtures (no live sites). The smoke command **must pass before done**. Register the marker in `pyproject [tool.pytest.ini_options] markers`.
+- **Impact analysis:** before a non-trivial change, identify blast radius — find callers/dependents/consumers (grep the symbol; check entry points: `merge_news.py`, `run_daily_all.ps1`, Task Scheduler `CrawlDailyNews`). Summarize what's affected + verified. Flag risk if blast radius is high and not fully test-covered.
+- **Similar check:** after a fix/pattern change, grep the same idiom across the repo (e.g. the shared parse pattern in cafef/ssi/hsc/vndirect crawlers). Apply where applicable, or list remaining as follow-up. Don't fix one of N copies silently.
 
 ## Summary report (generated per change)
-When a change is done, **generate** a concise, context-appropriate markdown summary — do not fill a rigid template. Save it as `docs/reports/<timestamp>_summaryOfUpdate_report.md` (`timestamp` = `YYYY-MM-DD_HHMM`).
-- Write it to fit THIS change: include what's relevant and omit what's not — **except code review, which is always required and always summarized.** (Add a "Smoke" section when relevant.)
-- Cover, as applicable: what changed, files changed (path -> purpose), tests + coverage %, `/code-review` result + actions, commands actually run, risks/follow-ups, a Definition-of-Done checklist.
+Generate a concise, context-appropriate markdown summary — `docs/reports/<YYYY-MM-DD_HHMM>_summaryOfUpdate_report.md`.
+- Fit THIS change: include what's relevant, omit what's not — **except code review, which is always required and always summarized.**
+- Cover, as applicable: what changed, files changed (path → purpose), tests + coverage %, `/code-review` result + actions, commands actually run, risks/follow-ups, a Definition-of-Done checklist.
 - Be honest: state only what truly happened; write `Not run` (with reason) for anything skipped.
 
-## Python Rules
-Use: Python 3.13 (per `.python-version`), `uv` for env/deps, `pytest` for tests, `ruff` for lint/format, type hints for public functions, `pathlib` for paths.
-Avoid: bare `except`; mutable default arguments; hardcoded absolute local paths; secrets in code (use `.env`); unbounded module-level caches/globals; notebook-only production logic.
+## Code hygiene (all languages)
+- No hidden global state / unbounded in-process caches (use bounded TTL/size caches; externalize shared state to a managed store).
+- No secrets in code (use `.env` / secrets manager).
+- No hardcoded absolute local paths.
+- No production logic that lives only in a notebook.
+
+---
+
+## Per-project setup (toolchain — the ONLY place stack specifics go)
+- **Language / toolchain:** Python 3.13 (`.python-version`) + `uv`; async + Playwright (chromium, stealth) + requests + pandas.
+- **Test command:** `uv run pytest`
+- **Coverage + diff-coverage:** `uv run pytest --cov=<module> --cov-report=xml` then `uvx diff-cover coverage.xml --fail-under=80` (`diff-cover` in dev deps).
+- **Lint command:** `uvx ruff check .`
+- **Lint excludes (vendored/generated):** `.claude data aggregated docs pdf` (in `pyproject.toml [tool.ruff] extend-exclude`).
+- **Smoke command:** `uv run pytest -m smoke`
+- **Code-review tool:** `/code-review`
+- **Language-specific extras (Python):** avoid bare `except` and mutable default args; type hints for public functions; `pathlib`; `PYTHONUTF8=1` on Windows; CSV `utf-8-sig`.
+- **Domain constraint:** KHÔNG dùng Vietstock JSON API — chỉ browser/HTTP crawl.
