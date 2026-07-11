@@ -152,7 +152,7 @@ A task is done only when ALL are true:
 - **Tests:** when behavior changes, write/run unit tests and ensure **>= 80% of the CHANGED lines are covered**, measured by **diff-coverage** (NOT total): produce a coverage report for the change, then run a diff-coverage gate. Ensure the change is committed/staged so the diff is measurable. (Commands in Per-project setup.)
 - **Checks run:** run the project's test + lint commands — or mark `Not run` with a reason. Never claim a command passed unless it actually ran.
 - **Lint scope:** exclude vendored / generated / third-party tooling directories from lint.
-- **Code review (always):** run `/code-review` and address findings before marking done. **Required for every change — including non-production (docs/config/scripts) — no exception.** Summarize result + actions in the report.
+- **Code review (always):** must run `/bmad-code-review` and address findings before marking done. **Required for every change — including non-production (docs/config/scripts) — no exception.** Summarize result + actions in the report.
 - **Summary report:** generate `docs/reports/<YYYY-MM-DD_HHMM>_summaryOfUpdate_report.md` (context-appropriate, not a rigid template).
 - **Smoke (gate):** at least one smoke test (tagged `smoke`) runs one happy-path of a crawler/script on saved fixtures (no live sites). The smoke command **must pass before done**. Register the marker in `pyproject [tool.pytest.ini_options] markers`.
 - **Impact analysis:** before a non-trivial change, identify blast radius — find callers/dependents/consumers (grep the symbol; check entry points: `merge_news.py`, `run_daily_all.ps1`, Task Scheduler `CrawlDailyNews`). Summarize what's affected + verified. Flag risk if blast radius is high and not fully test-covered.
