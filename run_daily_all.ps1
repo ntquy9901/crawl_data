@@ -31,6 +31,9 @@ Run "Morning digest (2 ngày)" "python morning_digest.py --days 2"
 # Vietstock/Cafef disclosure adapters (E2) pending — add here once implemented.
 Run "VSDC latest (VN30 corporate actions)" "python -m objective.adapters.vsdc_crawler --latest"
 Run "VnExpress RSS (Tier-2 news)" "python -m objective.adapters.tier2_rss.vnexpress --latest"
+foreach ($outlet in @("tuoitre", "nld", "thanhnien")) {
+    Run "Tier-2 RSS ($outlet)" "python -m objective.adapters.tier2_rss.outlets $outlet --latest"
+}
 Run "Build unified objective dataset" "python -m objective.build_objective"
 
 Write-Host ""
