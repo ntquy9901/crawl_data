@@ -33,7 +33,11 @@ structure (JS grid). Compliant browser-scrape (render + read DOM) yields nothing
   work (wait for the specific grid selector, possibly per-ticker), OR
 - (c) Replace Vietstock with another Tier-3 route for VN30 disclosures.
 
-## E2.2 — Cafef disclosure (FR-17) — BLOCKED (unreachable from this environment)
+## E2.2 — Cafef disclosure (FR-17) — DEFERRED (user choice 2026-07-12: accept Vietstock+VSDC coverage)
+
+Vietstock (E2.1, done) + VSDC now cover VN30 disclosures; Cafef was only a cross-check source (AD-6 dedup handles Vietstock/VSDC overlap). Original BLOCKED analysis retained below.
+
+### Original BLOCKED analysis (superseded by deferral)
 
 **Evidence:** `cafef.com.vn` returns `ERR_CONNECTION_TIMED_OUT` via BOTH plain
 HTTP (urllib) AND headless Playwright (stealth browser) — on
