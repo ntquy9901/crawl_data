@@ -70,7 +70,7 @@ development_status:
   # === Epic 3: Tier-2 Objective News Corpus ===
   epic-3: in-progress
   3-1-tier-2-rss-framework-vnexpress-companion-file: done
-  3-2-remaining-9-tier-2-outlets: backlog
+  3-2-remaining-9-tier-2-outlets: review  # 3/9 verified (tuoitre/nld/thanhnien); 6 need RSS discovery
   epic-3-retrospective: optional
 
   # === Epic 4: Unified Dataset Build + Daily Schedule ===
