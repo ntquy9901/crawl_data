@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Objective VN30 Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;padding:20px}
+h1{font-size:1.5rem;margin-bottom:16px;color:#38bdf8}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px}
+.card{background:#1e293b;border-radius:8px;padding:16px;text-align:center}
+.card .num{font-size:2rem;font-weight:700;color:#38bdf8}
+.card .lbl{font-size:.8rem;color:#94a3b8;margin-top:4px}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-bottom:24px}
+.chart-box{background:#1e293b;border-radius:8px;padding:16px}
+.chart-box h3{font-size:.9rem;color:#94a3b8;margin-bottom:8px}
+canvas{max-height:260px}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th,td{padding:6px 10px;text-align:left;border-bottom:1px solid #334155}
+th{color:#38bdf8} td{color:#cbd5e1}
+.gen{text-align:center;color:#475569;font-size:.75rem;margin-top:16px}
+</style></head><body>
+<h1>📊 Objective VN30 Data Dashboard</h1>
+<div class="cards">
+  <div class="card"><div class="num">__TOTAL__</div><div class="lbl">Records</div></div>
+  <div class="card"><div class="num">__TICKERS__/__VN30__</div><div class="lbl">VN30 Tickers</div></div>
+  <div class="card"><div class="num">__SOURCES__</div><div class="lbl">Sources</div></div>
+  <div class="card"><div class="num">__NEWS__</div><div class="lbl">News Corpus</div></div>
+  <div class="card"><div class="num" style="font-size:1rem">__OLDEST__</div><div class="lbl">Oldest</div></div>
+  <div class="card"><div class="num" style="font-size:1rem">__NEWEST__</div><div class="lbl">Newest</div></div>
+</div>
+<div class="charts">
+  <div class="chart-box"><h3>By Event Type</h3><canvas id="evt"></canvas></div>
+  <div class="chart-box"><h3>Top 10 Tickers</h3><canvas id="tk"></canvas></div>
+  <div class="chart-box"><h3>By Source</h3><canvas id="src"></canvas></div>
+  <div class="chart-box"><h3>Events Over Time</h3><canvas id="tl"></canvas></div>
+</div>
+<h3 style="margin-bottom:8px;color:#38bdf8">Per-Ticker Breakdown</h3>
+<table><thead><tr><th>Ticker</th><th>Records</th><th>Latest</th><th>Event Types</th></tr></thead>
+<tbody>__ROWS__</tbody></table>
+<div class="gen">Generated __GEN__ · objective/dashboard.py</div>
+<script>
+const S=__JSON__;
+new Chart(evt,{type:'doughnut',
+  data:{labels:Object.keys(S.by_event_type),
+    datasets:[{data:Object.values(S.by_event_type),
+      backgroundColor:['#38bdf8','#f59e0b','#10b981','#ef4444',
+        '#8b5cf6','#ec4899','#14b8a6','#64748b']}]},
+  options:{plugins:{legend:{position:'right',
+    labels:{color:'#cbd5e1',font:{size:10}}}}}});
+new Chart(tk,{type:'bar',
+  data:{labels:S.top_tickers.map(function(t){return t[0]}),
+    datasets:[{data:S.top_tickers.map(function(t){return t[1]}),
+      backgroundColor:'#38bdf8'}]},
+  options:{indexAxis:'y',
+    plugins:{legend:{display:false}},
+    scales:{x:{ticks:{color:'#64748b'}},
+      y:{ticks:{color:'#cbd5e1',font:{size:10}}}}}});
+new Chart(src,{type:'pie',
+  data:{labels:Object.keys(S.by_source),
+    datasets:[{data:Object.values(S.by_source),
+      backgroundColor:['#38bdf8','#f59e0b']}]},
+  options:{plugins:{legend:{position:'right',
+    labels:{color:'#cbd5e1'}}}}});
+new Chart(tl,{type:'line',
+  data:{labels:S.monthly_counts.map(function(m){return m[0]}),
+    datasets:[{data:S.monthly_counts.map(function(m){return m[1]}),
+      borderColor:'#38bdf8',fill:false,tension:0.3,pointRadius:1}]},
+  options:{plugins:{legend:{display:false}},
+    scales:{x:{ticks:{color:'#64748b',maxRotation:45}},
+      y:{ticks:{color:'#64748b'}}}}});
+</script>
+</body></html>

@@ -36,6 +36,7 @@ foreach ($outlet in @("tuoitre", "nld", "thanhnien", "vietnamplus")) {
     Run "Tier-2 RSS ($outlet)" "python -m objective.adapters.tier2_rss.outlets $outlet --latest"
 }
 Run "Build unified objective dataset" "python -m objective.build_objective"
+Run "Generate dashboard" "python -m objective.dashboard"
 
 Write-Host ""
 Write-Host "=== DONE daily all ==="
