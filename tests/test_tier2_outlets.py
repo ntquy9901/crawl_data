@@ -12,8 +12,8 @@ SAMPLE = """<?xml version="1.0"?><rss><channel>
 </channel></rss>"""
 
 
-def test_outlets_registry_has_three_verified():
-    assert set(OUTLETS) == {"tuoitre", "nld", "thanhnien"}
+def test_outlets_registry_has_verified():
+    assert set(OUTLETS) == {"tuoitre", "nld", "thanhnien", "vietnamplus"}
 
 
 def test_each_outlet_has_source_and_feed_url():

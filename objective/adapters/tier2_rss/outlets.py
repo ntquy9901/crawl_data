@@ -34,10 +34,17 @@ class ThanhnienRssCrawler(Tier2RssCrawler):
     feed_url = "https://thanhnien.vn/rss/thoi-su.rss"
 
 
+class VietnamPlusRssCrawler(Tier2RssCrawler):
+    source = "vietnamplus"
+    base_url = "https://www.vietnamplus.vn"
+    feed_url = "https://www.vietnamplus.vn/rss/kinh-te.rss"  # economy (50 items)
+
+
 OUTLETS = {
     "tuoitre": TuoitreRssCrawler,
     "nld": NldRssCrawler,
     "thanhnien": ThanhnienRssCrawler,
+    "vietnamplus": VietnamPlusRssCrawler,
 }
 
 
