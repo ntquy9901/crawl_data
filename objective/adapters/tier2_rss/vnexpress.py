@@ -9,3 +9,7 @@ class VnExpressRssCrawler(Tier2RssCrawler):
     base_url = "https://vnexpress.net"
     # kinh-doanh (business) feed; chung-khoan (securities) is the sibling feed.
     feed_url = "https://vnexpress.net/rss/kinh-doanh.rss"
+
+
+if __name__ == "__main__":  # CLI: python -m objective.adapters.tier2_rss.vnexpress --latest
+    VnExpressRssCrawler.cli()

@@ -97,3 +97,7 @@ class VsdcCrawler(BaseObjectiveCrawler):
         # title, so skip non-VN30 issuers before the network call.
         code = (item.get("company_code") or "").upper()
         return bool(code) and is_vn30(code)
+
+
+if __name__ == "__main__":  # CLI: python -m objective.adapters.vsdc_crawler --latest|--range
+    VsdcCrawler.cli()
