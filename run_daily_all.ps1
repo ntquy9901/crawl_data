@@ -30,6 +30,7 @@ Run "Morning digest (2 ngày)" "python morning_digest.py --days 2"
 # Tier-1 corporate actions + Tier-2 news → build unified VN30 objective dataset.
 # Vietstock/Cafef disclosure adapters (E2) pending — add here once implemented.
 Run "VSDC latest (VN30 corporate actions)" "python -m objective.adapters.vsdc_crawler --latest"
+Run "Vietstock VN30 disclosures (FR-16)" "python -m objective.adapters.vietstock_disclosure --latest"
 Run "VnExpress RSS (Tier-2 news)" "python -m objective.adapters.tier2_rss.vnexpress --latest"
 foreach ($outlet in @("tuoitre", "nld", "thanhnien", "vietnamplus")) {
     Run "Tier-2 RSS ($outlet)" "python -m objective.adapters.tier2_rss.outlets $outlet --latest"

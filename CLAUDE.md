@@ -73,6 +73,11 @@ Mỗi crawler có cột `source` ghi nguồn (lưu vết/phân loại) + dedup r
 ## Stack & ràng buộc
 - Python 3.13 (async) + Playwright (chromium, stealth) + playwright-stealth + fake-useragent; requests (download), pandas (CSV), python-dotenv, aiohttp, lxml, PyMuPDF. (`uv` env — `.python-version`)
 - **KHÔNG dùng Vietstock JSON API** (giới hạn truy cập) — chỉ browser crawl.
+  - **EXCEPTION (authorized 2026-07-12):** the objective VN30 disclosure adapter
+    (`objective/adapters/vietstock_disclosure.py`, FR-16) MAY call Vietstock's
+    `/data/EventsTypeData` POST endpoint directly (token extracted from the page
+    hidden input + session cookie). Scope-limited to VN30 corporate-action
+    events; the analysis-reports crawler (`crawler.py`) still browser-only.
 
 ## Crawl design rules
 1. **Song song hóa** (luôn nghĩ tới khi plan/design/code): fetch/parse độc lập phải chạy song song để crawl nhanh — I/O-bound (HTTP) → `ThreadPoolExecutor` (`--workers`); CPU-bound (parse PDF) → `ProcessPoolExecutor`.
@@ -181,4 +186,4 @@ Generate a concise, context-appropriate markdown summary — `docs/reports/<YYYY
 - **Smoke command:** `uv run pytest -m smoke`
 - **Code-review tool:** `/code-review`
 - **Language-specific extras (Python):** avoid bare `except` and mutable default args; type hints for public functions; `pathlib`; `PYTHONUTF8=1` on Windows; CSV `utf-8-sig`.
-- **Domain constraint:** KHÔNG dùng Vietstock JSON API — chỉ browser/HTTP crawl.
+- **Domain constraint:** KHÔNG dùng Vietstock JSON API — chỉ browser/HTTP crawl. *(Exception: objective VN30 disclosure FR-16 uses `/data/EventsTypeData` — see Stack section above, authorized 2026-07-12.)*

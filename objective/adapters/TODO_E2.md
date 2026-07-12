@@ -5,7 +5,11 @@ on code. Per the strict DoD (no speculative code), they are deferred with the
 evidence + the decision/path each needs. None can be implemented cleanly without
 a product/environment change.
 
-## E2.1 — Vietstock per-company disclosure (FR-16) — BLOCKED (constraint + JS grid)
+## E2.1 — Vietstock per-company disclosure (FR-16) — DONE (option 1, 2026-07-12)
+
+Implemented in objective/adapters/vietstock_disclosure.py via the /data/EventsTypeData POST endpoint (no-JSON-API constraint relaxed for FR-16, see CLAUDE.md). Live-verified: VNM → 50 disclosure records. Original BLOCKED notes retained below for context.
+
+### Original BLOCKED analysis (superseded)
 
 **Evidence (3 Playwright probes + network capture):**
 - `finance.vietstock.vn/<TICKER>/cong-bo-thong-tin.htm` renders the company
