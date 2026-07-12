@@ -62,7 +62,7 @@ development_status:
   epic-1-retrospective: optional
 
   # === Epic 2: VN30 Company Disclosures (Vietstock + Cafef) ===
-  epic-2: backlog
+  epic-2: backlog  # BLOCKED on source access (Vietstock no-JSON-API+JS-grid; Cafef conn-timeout) — see objective/adapters/TODO_E2.md
   2-1-vietstock-per-company-disclosure-adapter: backlog
   2-2-cafef-per-company-disclosure-adapter-cross-dedup: backlog
   epic-2-retrospective: optional
