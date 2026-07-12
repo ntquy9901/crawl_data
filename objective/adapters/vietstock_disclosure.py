@@ -108,34 +108,48 @@ class VietstockDisclosureCrawler(BaseObjectiveCrawler):
             return []
         return parse_events(r.text)
 
-    # ---- the crawl: iterate VN30, POST per ticker, build rows ----
-    def crawl_latest(self, max_pages: int = 1):
+    # ---- the crawl: iterate VN30, POST per ticker, paginate ALL pages ----
+    def crawl_latest(self, max_pages: int = 0):
+        """max_pages=0 → paginate ALL pages per ticker (deep backfill to earliest).
+        max_pages=N → first N pages only (daily mode)."""
         tickers = self.tickers if self.tickers is not None else list(load_vn30())
-        self._audit(f"RUN vietstock-disclosure tickers={len(tickers)} page_size={self.page_size}")
+        self._audit(f"RUN vietstock-disclosure tickers={len(tickers)} "
+                    f"page_size={self.page_size} max_pages={max_pages or 'ALL'}")
         for ticker in tickers:
             token = self._token(ticker)
             if not token:
                 self._audit(f"no token {ticker} — skip")
                 continue
-            events = self._fetch_events(ticker, token, page=1)
-            rows = []
-            for e in events:
-                # synthetic per-event URL (canonicalize keeps the path) → unique document_id
-                url = f"{self.base_url}/{ticker}/events/{e.get('EventID')}"
-                key = self._dedup_key(url)
-                if key in self.seen:
-                    self.counters["dup"] += 1
-                    continue
-                payload = event_to_payload(ticker, e)
-                if not self._keep_payload(payload):  # VN30 safety (ticker is VN30 by iteration)
-                    continue
-                row = self._build_row(url, e.get("Content", "") or "", payload, {"url": url})
-                rows.append(row)
-                self.seen.add(key)
-                self.counters["kept"] += 1
-            if rows:
-                self._append(rows)
-                self._audit(f"{ticker}: kept={len(rows)} dup={self.counters['dup']}")
+            page = 1
+            ticker_kept = 0
+            while True:
+                events = self._fetch_events(ticker, token, page=page)
+                if not events:
+                    break
+                rows = []
+                for e in events:
+                    # synthetic per-event URL (canonicalize keeps the path) → unique document_id
+                    url = f"{self.base_url}/{ticker}/events/{e.get('EventID')}"
+                    key = self._dedup_key(url)
+                    if key in self.seen:
+                        self.counters["dup"] += 1
+                        continue
+                    payload = event_to_payload(ticker, e)
+                    if not self._keep_payload(payload):
+                        continue
+                    row = self._build_row(url, e.get("Content", "") or "", payload, {"url": url})
+                    rows.append(row)
+                    self.seen.add(key)
+                    self.counters["kept"] += 1
+                    ticker_kept += 1
+                if rows:
+                    self._append(rows)
+                if len(events) < self.page_size:
+                    break  # last page
+                page += 1
+                if max_pages and page > max_pages:
+                    break  # max_pages=0 → paginate all
+            self._audit(f"{ticker}: kept={ticker_kept} pages={page}")
         self._audit(f"RUN END kept={self.counters['kept']} dup={self.counters['dup']} "
                     f"-> {self.csv_file}")
         return self.counters
