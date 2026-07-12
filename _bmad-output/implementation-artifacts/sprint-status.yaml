@@ -1,0 +1,80 @@
+# generated: 2026-07-11
+# last_updated: 2026-07-11
+# project: crawl_data
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: _bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; sprint-status surfaces open ones
+#
+# SPRINT CONTEXT (objective VN30 crawler):
+# - 4 epics / 10 stories, dependency order: E1 (foundation+VSDC) → E2 (Vietstock/Cafef disclosure) → E3 (Tier-2 news) → E4 (build+schedule)
+# - E1 within: 1.1 → 1.2 → 1.3 → 1.4 (sequential). E2/E3 build on E1 foundation. E4 consumes E1-3.
+# - Story files not yet created → all stories 'backlog'.
+
+generated: 2026-07-11
+last_updated: 2026-07-12
+project: crawl_data
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+
+development_status:
+  # === Epic 1: VN30 Foundation + VSDC Corporate Actions ===
+  epic-1: done
+  1-1-objectiverecord-schema-canonical-helpers: done
+  1-2-vn30-universe-config-loader: done
+  1-3-baseobjectivecrawler-framework: done
+  1-4-vsdc-adapter-vn30-filter-smoke: done
+  epic-1-retrospective: optional
+
+  # === Epic 2: VN30 Company Disclosures (Vietstock + Cafef) ===
+  epic-2: in-progress  # 2-1 DONE (option 1: /data/EventsTypeData); 2-2 Cafef still blocked (conn-timeout)
+  2-1-vietstock-per-company-disclosure-adapter: done
+  2-2-cafef-per-company-disclosure-adapter-cross-dedup: backlog
+  epic-2-retrospective: optional
+
+  # === Epic 3: Tier-2 Objective News Corpus ===
+  epic-3: in-progress
+  3-1-tier-2-rss-framework-vnexpress-companion-file: done
+  3-2-remaining-9-tier-2-outlets: review  # 3/9 verified (tuoitre/nld/thanhnien); 6 need RSS discovery
+  epic-3-retrospective: optional
+
+  # === Epic 4: Unified Dataset Build + Daily Schedule ===
+  epic-4: done
+  4-1-build-objective-merge-cross-source-dedup-version: done
+  4-2-daily-schedule-extension: done
+  epic-4-retrospective: optional

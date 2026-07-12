@@ -23,7 +23,8 @@ from datetime import datetime
 from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
 
-from base_news_crawler import BaseNewsCrawler, CSV_HEADERS, UA, strip_html, short_id, now_iso
+from base_news_crawler import UA, BaseNewsCrawler, now_iso, short_id, strip_html
+from utils.body_extractor import extract_html_body
 
 CATEGORIES = ["company-note", "sector-note", "strategy-note", "economics-note"]
 LAUNCH_ARGS = [
@@ -93,6 +94,62 @@ class VndirectCrawler(BaseNewsCrawler):
         finally:
             self._close()
 
+    def fetch_bodies(self, test: bool = False, limit: int = 0) -> None:
+        """Re-fetch body cho các row body rỗng qua Playwright (Cloudflare). Ghi in-place.
+
+        Sequential (workers=1, 1 browser). Chậm ~5-10s/bài (page load + Cloudflare).
+        Toàn bộ 967 bài ~1.5-2h → chạy `--max-articles` chunk hoặc để qua đêm."""
+        import csv as _csv
+        with open(self.csv_file, encoding="utf-8-sig", newline="") as f:
+            rows = list(_csv.DictReader(f))
+        if not rows:
+            return
+        fieldnames = list(rows[0].keys())
+        if "body" not in fieldnames:
+            fieldnames.append("body")
+        todo = [r for r in rows if not (r.get("body") or "").strip()]
+        if test:
+            todo = todo[:5]
+        elif limit:
+            todo = todo[:limit]
+        print(f"--fetch-body: {len(todo)}/{len(rows)} rows need body (Playwright sequential)")
+        if not todo:
+            return
+        self._ensure_browser()
+        done = fail = 0
+        try:
+            for i, row in enumerate(todo, 1):
+                url = row.get("url") or ""
+                if not url:
+                    fail += 1
+                    continue
+                try:
+                    self._page.goto(url, timeout=60000, wait_until="domcontentloaded")
+                    try:
+                        self._page.wait_for_load_state("networkidle", timeout=20000)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    for _ in range(10):  # chờ Cloudflare "Just a moment"
+                        t = self._page.title()
+                        if "just a moment" not in t.lower() and "attention" not in t.lower():
+                            break
+                        self._page.wait_for_timeout(3000)
+                    row["body"] = extract_html_body(self._page.content(), "vndirect")
+                    done += 1 if row["body"] else 0
+                    fail += 0 if row["body"] else 1
+                except Exception as e:  # noqa: BLE001
+                    self._audit(f"BODY FAIL {url} -> {e}")
+                    fail += 1
+                if i % 20 == 0 or i == len(todo):
+                    print(f"  {i}/{len(todo)} body={done} fail={fail}")
+        finally:
+            with open(self.csv_file, "w", encoding="utf-8-sig", newline="") as f:
+                w = _csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+                w.writeheader()
+                w.writerows(rows)
+            self._close()
+        print(f"-> {self.csv_file}: body filled {done}/{len(todo)} (fail={fail})")
+
     # ---------- hooks ----------
     def listing_url(self, page: int) -> str:
         base = f"{self.base_url}/en/category/{self.category}/"
@@ -111,7 +168,10 @@ class VndirectCrawler(BaseNewsCrawler):
             m_mon = re.search(r"<sup>/(\d+)</sup>", card)
             m_yr = re.search(r"Year\s*(\d+)", card)
             m_lead = re.search(r"news-des[^>]*>(.*?)</div>", card, re.S)
-            pub = f"{m_day.group(1)}/{m_mon.group(1)}/{m_yr.group(1)}" if (m_day and m_mon and m_yr) else ""
+            pub = (
+                f"{m_day.group(1)}/{m_mon.group(1)}/{m_yr.group(1)}"
+                if (m_day and m_mon and m_yr) else ""
+            )
             items.append({
                 "url": m_href.group(1),
                 "title": strip_html(m_title.group(1)) if m_title else "",
@@ -141,6 +201,8 @@ class VndirectCrawler(BaseNewsCrawler):
         mode = ap.add_mutually_exclusive_group()
         mode.add_argument("--latest", action="store_true")
         mode.add_argument("--range", action="store_true")
+        mode.add_argument("--fetch-body", action="store_true",
+                          help="re-fetch body qua Playwright (Cloudflare) cho row body rỗng")
         ap.add_argument("--category", default="company-note", choices=CATEGORIES)
         ap.add_argument("--from-date", type=str, default=None)
         ap.add_argument("--end-date", type=str, default=None)
@@ -156,12 +218,15 @@ class VndirectCrawler(BaseNewsCrawler):
             try:
                 return datetime.strptime(s, "%Y-%m-%d").date()
             except ValueError:
-                print(f"! ngày không hợp lệ: {s}"); sys.exit(2)
+                print(f"! ngày không hợp lệ: {s}")
+                sys.exit(2)
 
         start, end = pd(args.from_date), pd(args.end_date)
         c = cls(category=args.category, csv_file=args.csv,
                 max_articles=5 if args.test else args.max_articles)
-        if args.range or start or end:
+        if args.fetch_body:
+            c.fetch_bodies(test=args.test)
+        elif args.range or start or end:
             c.crawl_range(start, end, max_pages=args.max_pages)
         else:
             c.crawl_latest(max_pages=args.max_pages or 1)

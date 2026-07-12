@@ -1,0 +1,12 @@
+effective_date,refinancing_rate,discount_rate,omo_rate,source
+2011-10-05,15.0,13.0,16.0,sbv_manual
+2012-03-13,14.0,12.0,15.0,sbv_manual
+2012-06-11,12.0,10.0,13.0,sbv_manual
+2013-08-26,7.0,5.0,7.0,sbv_manual
+2014-06-09,6.5,4.5,6.5,sbv_manual
+2019-09-16,6.0,4.0,6.0,sbv_manual
+2020-03-17,4.5,3.0,4.0,sbv_manual
+2022-09-23,5.0,3.5,5.0,sbv_manual
+2022-10-25,6.0,4.0,6.0,sbv_manual
+2023-03-14,5.5,3.5,5.5,sbv_manual
+2023-06-19,4.5,3.0,4.5,sbv_manual

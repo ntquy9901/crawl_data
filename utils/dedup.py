@@ -3,9 +3,10 @@ Deduplication module for Vietstock Crawler
 Checks if URLs already exist in CSV to avoid duplicates
 """
 
-import pandas as pd
 from pathlib import Path
-from typing import Set, Optional
+
+import pandas as pd
+
 from config import CSV_FILE, CSV_HEADERS
 
 
@@ -14,8 +15,8 @@ class DedupManager:
 
     def __init__(self, csv_file: Path = CSV_FILE):
         self.csv_file = csv_file
-        self._existing_urls: Optional[Set[str]] = None
-        self._existing_ids: Optional[Set[str]] = None
+        self._existing_urls: set[str] | None = None
+        self._existing_ids: set[str] | None = None
 
     def load_existing_data(self) -> None:
         """Load existing URLs and IDs from CSV into memory"""
@@ -37,20 +38,20 @@ class DedupManager:
             self._existing_ids = set()
 
     @property
-    def existing_urls(self) -> Set[str]:
+    def existing_urls(self) -> set[str]:
         """Get set of existing URLs, loading from CSV if not already loaded"""
         if self._existing_urls is None:
             self.load_existing_data()
         return self._existing_urls if self._existing_urls is not None else set()
 
     @property
-    def existing_ids(self) -> Set[str]:
+    def existing_ids(self) -> set[str]:
         """Get set of existing IDs, loading from CSV if not already loaded"""
         if self._existing_ids is None:
             self.load_existing_data()
         return self._existing_ids if self._existing_ids is not None else set()
 
-    def is_duplicate(self, url: str, check_id: Optional[str] = None) -> bool:
+    def is_duplicate(self, url: str, check_id: str | None = None) -> bool:
         """
         Check if a URL or ID already exists in the CSV
 
@@ -67,7 +68,7 @@ class DedupManager:
             return True
         return False
 
-    def add_to_seen(self, url: str, id_value: Optional[str] = None) -> None:
+    def add_to_seen(self, url: str, id_value: str | None = None) -> None:
         """
         Add a URL and/or ID to the seen sets
 
@@ -87,7 +88,7 @@ class DedupManager:
 
 
 # Global dedup manager instance
-_dedup_manager: Optional[DedupManager] = None
+_dedup_manager: DedupManager | None = None
 
 
 def get_dedup_manager() -> DedupManager:

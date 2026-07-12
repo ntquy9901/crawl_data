@@ -15,7 +15,7 @@ import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, date, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -27,7 +27,7 @@ HN_TZ = timezone(timedelta(hours=7))
 
 CSV_HEADERS = [
     "id", "source", "title", "category", "pub_date", "url",
-    "author", "lead", "pdf_url", "pdf_filename", "collected_at",
+    "author", "lead", "pdf_url", "pdf_filename", "collected_at", "body",
 ]
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -131,15 +131,21 @@ class BaseNewsCrawler:
         return None
 
     # ---------------- CSV / dedup (resume) ----------------
+    def _dedup_key(self, url: str) -> str:
+        """Resume-dedup key for a URL. Default = the URL itself (identity).
+        Subclasses (e.g. BaseObjectiveCrawler) override to canonicalize so
+        reordered query params / tracking suffixes don't defeat dedup."""
+        return url
+
     def _load_seen(self) -> set:
         seen = set()
         if self.csv_file.exists():
             try:
-                with open(self.csv_file, "r", encoding="utf-8-sig", newline="") as f:
+                with open(self.csv_file, encoding="utf-8-sig", newline="") as f:
                     for row in csv.DictReader(f):
                         u = row.get("url")
                         if u:
-                            seen.add(u)
+                            seen.add(self._dedup_key(u))
             except Exception as e:  # noqa: BLE001
                 print(f"warn: load seen: {e}")
         return seen
@@ -184,6 +190,7 @@ class BaseNewsCrawler:
             "lead": extra.get("lead", ""),
             "pdf_url": extra.get("pdf_url", ""),
             "pdf_filename": extra.get("pdf_filename", ""),
+            "body": extra.get("body", ""),
             "collected_at": now_iso(),
         }
 
@@ -194,6 +201,7 @@ class BaseNewsCrawler:
             u = it.get("url")
             if not u:
                 continue
+            u = self._dedup_key(u)
             d = parse_date(it.get("pub_date"))
             if start_date and d and d < start_date:
                 self.counters["out_of_range"] += 1
@@ -224,7 +232,7 @@ class BaseNewsCrawler:
                     if not rec:
                         self.counters["fail"] += 1
                         continue
-                    self.seen.add(rec["url"])
+                    self.seen.add(self._dedup_key(rec["url"]))
                     kept_batch.append(rec)
                     self.counters["kept"] += 1
                     if self.max_articles and self.counters["kept"] >= self.max_articles:
@@ -243,7 +251,8 @@ class BaseNewsCrawler:
 
     def crawl_latest(self, max_pages=1):
         """Lấy tin mới nhất (chạy daily)."""
-        self._audit(f"RUN latest source={self.source} workers={self.workers} batch={self.batch_size}")
+        self._audit(f"RUN latest source={self.source} "
+                    f"workers={self.workers} batch={self.batch_size}")
         t0 = time.time()
         page = 1
         while page <= max_pages and not self._stop:
@@ -267,7 +276,8 @@ class BaseNewsCrawler:
         return self.counters
 
     def crawl_range(self, start_date=None, end_date=None, max_pages=0):
-        """Paginate listing (newest→oldest), lọc theo [start,end]. Dừng khi qua start hoặc hết trang."""
+        """Paginate listing (newest→oldest), lọc theo [start,end].
+        Dừng khi qua start hoặc hết trang."""
         self._audit(f"RUN range source={self.source} {start_date}..{end_date} "
                     f"workers={self.workers} batch={self.batch_size} max_pages={max_pages}")
         t0 = time.time()
@@ -313,7 +323,8 @@ class BaseNewsCrawler:
         ap = argparse.ArgumentParser(description=f"{cls.source} crawler")
         mode = ap.add_mutually_exclusive_group()
         mode.add_argument("--latest", action="store_true", help="lấy tin mới nhất (vd daily)")
-        mode.add_argument("--range", action="store_true", help="lấy theo khoảng --from-date..--end-date")
+        mode.add_argument("--range", action="store_true",
+                          help="lấy theo khoảng --from-date..--end-date")
         ap.add_argument("--from-date", type=str, default=None, help="YYYY-MM-DD (inclusive)")
         ap.add_argument("--end-date", type=str, default=None, help="YYYY-MM-DD (inclusive)")
         ap.add_argument("--max-pages", type=int, default=0, help="0=∞ (latest default 1)")

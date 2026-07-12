@@ -1,0 +1,39 @@
+# VN30 constituents — canonical ticker → company name (AD-5 single source of truth).
+#
+# SNAPSHOT 2026-07. The VN30 index is rebalanced semi-annually by HOSE — verify
+# against the official list before relying on it for the universe filter, and
+# update this file on each rebalance. Names are the official Vietnamese registered
+# names (canonical for AD-12 company_name binding).
+# Format: ticker MUST match ^[A-Z0-9]{3,5}$ (AD-4).
+
+[vn30]
+ACB = "Ngân hàng TMCP Á Châu"
+BID = "Ngân hàng TMCP Đầu tư và Phát triển Việt Nam"
+BVH = "Tập đoàn Bảo Việt"
+CTG = "Ngân hàng TMCP Công thương Việt Nam"
+DHG = "Công ty CP Dược Hậu Giang"
+FPT = "Công ty CP FPT"
+GAS = "Tổng công ty Khí Việt Nam"
+GVR = "Tập đoàn Hóa chất và Dịch vụ Nông nghiệp"
+HDB = "Ngân hàng TMCP Phát triển TP.HCM"
+HPG = "Công ty CP Tập đoàn Hòa Phát"
+HSG = "Công ty CP Tập đoàn Hoa Sen"
+MBB = "Ngân hàng TMCP Quân đội"
+MSN = "Tập đoàn Masan"
+MWG = "Công ty CP Đầu tư Thế Giới Di Động"
+NVL = "Tập đoàn Đầu tư Bất động sản No Va"
+PNJ = "Công ty CP Vàng bạc Đá quý Phú Nhuận"
+PLX = "Tập đoàn Xăng dầu Việt Nam"
+REE = "Công ty CP Cơ điện lạnh"
+SAB = "Tổng công ty Bia - Rượu - NGK Sài Gòn"
+SHB = "Ngân hàng TMCP Sài Gòn - Hà Nội"
+STB = "Ngân hàng TMCP Sài Gòn Thương Tín"
+TCB = "Ngân hàng TMCP Kỹ thương Việt Nam"
+TPB = "Ngân hàng TMCP Tiên Phong"
+VCB = "Ngân hàng TMCP Ngoại thương Việt Nam"
+VHM = "Công ty CP Vinhomes"
+VIC = "Tập đoàn Vingroup"
+VIB = "Ngân hàng TMCP Quốc tế"
+VJC = "Công ty CP Hàng không Vietjet"
+VNM = "Công ty CP Sữa Việt Nam"
+VPB = "Ngân hàng TMCP Việt Nam Thịnh Vượng"

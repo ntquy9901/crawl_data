@@ -71,8 +71,20 @@ Thu thập dữ liệu phân tích/tin tức thị trường CK Việt Nam đa n
 Mỗi crawler có cột `source` ghi nguồn (lưu vết/phân loại) + dedup riêng (resumable). Chạy định kỳ qua Windows Task Scheduler (`run_daily_all.ps1`).
 
 ## Stack & ràng buộc
-- Python 3.11 (async) + Playwright (chromium, stealth) + playwright-stealth + fake-useragent; requests (download), pandas (CSV), python-dotenv, aiohttp.
+- Python 3.13 (async) + Playwright (chromium, stealth) + playwright-stealth + fake-useragent; requests (download), pandas (CSV), python-dotenv, aiohttp, lxml, PyMuPDF. (`uv` env — `.python-version`)
 - **KHÔNG dùng Vietstock JSON API** (giới hạn truy cập) — chỉ browser crawl.
+  - **EXCEPTION (authorized 2026-07-12):** the objective VN30 disclosure adapter
+    (`objective/adapters/vietstock_disclosure.py`, FR-16) MAY call Vietstock's
+    `/data/EventsTypeData` POST endpoint directly (token extracted from the page
+    hidden input + session cookie). Scope-limited to VN30 corporate-action
+    events; the analysis-reports crawler (`crawler.py`) still browser-only.
+
+## Crawl design rules
+1. **Song song hóa** (luôn nghĩ tới khi plan/design/code): fetch/parse độc lập phải chạy song song để crawl nhanh — I/O-bound (HTTP) → `ThreadPoolExecutor` (`--workers`); CPU-bound (parse PDF) → `ProcessPoolExecutor`.
+2. **Nhẹ trước, nặng sau**: ưu tiên nội dung nhẹ (HTML head/body, RSS) TRƯỚC nội dung nặng (PDF, Playwright/Cloudflare). Nội dung nặng chạy nền/chạy sau để có kết quả nhanh.
+3. **Config bật/tắt các chức năng tốn thời gian**:
+   - Download nội dung nặng (PDF): `DOWNLOAD_PDF` (`config.py`), `--no-playwright` (backfill scripts).
+   - Head/body/file tách lớp: metadata (head) luôn crawl; body opt-in (`--fetch-body` cafef/vndirect, `scripts/build_vnstock_pdf_raw.py`); daily cafef lead-only (`--daily`). Mỗi lớp chạy độc lập, bật/tắt bằng flag/env.
 
 ## Cấu trúc
 - `crawler.py` — script chính, class `VietstockCrawler`. Flow: `init_browser` → loop {navigate/paginate → `extract_report_links` → `_collect_reports` (date-filter → dedup → `download_pdf` nếu `DOWNLOAD_PDF` → `save_to_csv`)}. Hai mode: `crawl()` (pagination thường, trong window mặc định ~1 năm) và `crawl_by_windows()` (`--from-date` — set filter `#fromDate/#toDate` + click `#btnSearchEDoc` để tới dữ liệu cũ).
@@ -133,3 +145,45 @@ Luôn set `PYTHONUTF8=1` trên Windows (CSV luôn UTF-8 BOM).
 3. Playwright `page.goto()` tới URL download → lỗi "Download is starting". Dùng `context.request.get()`.
 4. **Dedup đánh dấu "đã thấy" ngay cả khi download fail** → re-run không retry bản fail. Cần xoá row khỏi CSV trước khi crawl lại.
 5. **CHƯA fix — extraction gán `date`=hôm nay khi card thiếu date rõ** → cột `date` sai (phồng năm gần, hút năm xa). `pdf_url` vẫn đúng. Xem Trạng thái.
+
+
+# Project Quality Rules
+
+> Project-agnostic quality gates. Stack specifics live in **Per-project setup** below (the only place). Source: `docs/proposed-repo-CLAUDE.md` (v1.0, 2026-07-09).
+
+## Definition of Done
+A task is done only when ALL are true:
+- Code directly satisfies the requested change; no unrelated refactor.
+- **Tests:** when behavior changes, write/run unit tests and ensure **>= 80% of the CHANGED lines are covered**, measured by **diff-coverage** (NOT total): produce a coverage report for the change, then run a diff-coverage gate. Ensure the change is committed/staged so the diff is measurable. (Commands in Per-project setup.)
+- **Checks run:** run the project's test + lint commands — or mark `Not run` with a reason. Never claim a command passed unless it actually ran.
+- **Lint scope:** exclude vendored / generated / third-party tooling directories from lint.
+- **Code review (always):** must run `/bmad-code-review` and address findings before marking done. **Required for every change — including non-production (docs/config/scripts) — no exception.** Summarize result + actions in the report.
+- **Summary report:** generate `docs/reports/<YYYY-MM-DD_HHMM>_summaryOfUpdate_report.md` (context-appropriate, not a rigid template).
+- **Smoke (gate):** at least one smoke test (tagged `smoke`) runs one happy-path of a crawler/script on saved fixtures (no live sites). The smoke command **must pass before done**. Register the marker in `pyproject [tool.pytest.ini_options] markers`.
+- **Impact analysis:** before a non-trivial change, identify blast radius — find callers/dependents/consumers (grep the symbol; check entry points: `merge_news.py`, `run_daily_all.ps1`, Task Scheduler `CrawlDailyNews`). Summarize what's affected + verified. Flag risk if blast radius is high and not fully test-covered.
+- **Similar check:** after a fix/pattern change, grep the same idiom across the repo (e.g. the shared parse pattern in cafef/ssi/hsc/vndirect crawlers). Apply where applicable, or list remaining as follow-up. Don't fix one of N copies silently.
+
+## Summary report (generated per change)
+Generate a concise, context-appropriate markdown summary — `docs/reports/<YYYY-MM-DD_HHMM>_summaryOfUpdate_report.md`.
+- Fit THIS change: include what's relevant, omit what's not — **except code review, which is always required and always summarized.**
+- Cover, as applicable: what changed, files changed (path → purpose), tests + coverage %, `/code-review` result + actions, commands actually run, risks/follow-ups, a Definition-of-Done checklist.
+- Be honest: state only what truly happened; write `Not run` (with reason) for anything skipped.
+
+## Code hygiene (all languages)
+- No hidden global state / unbounded in-process caches (use bounded TTL/size caches; externalize shared state to a managed store).
+- No secrets in code (use `.env` / secrets manager).
+- No hardcoded absolute local paths.
+- No production logic that lives only in a notebook.
+
+---
+
+## Per-project setup (toolchain — the ONLY place stack specifics go)
+- **Language / toolchain:** Python 3.13 (`.python-version`) + `uv`; async + Playwright (chromium, stealth) + requests + pandas.
+- **Test command:** `uv run pytest`
+- **Coverage + diff-coverage:** `uv run pytest --cov=<module> --cov-report=xml` then `uvx diff-cover coverage.xml --fail-under=80` (`diff-cover` in dev deps).
+- **Lint command:** `uvx ruff check .`
+- **Lint excludes (vendored/generated):** `.claude data aggregated docs pdf` (in `pyproject.toml [tool.ruff] extend-exclude`).
+- **Smoke command:** `uv run pytest -m smoke`
+- **Code-review tool:** `/code-review`
+- **Language-specific extras (Python):** avoid bare `except` and mutable default args; type hints for public functions; `pathlib`; `PYTHONUTF8=1` on Windows; CSV `utf-8-sig`.
+- **Domain constraint:** KHÔNG dùng Vietstock JSON API — chỉ browser/HTTP crawl. *(Exception: objective VN30 disclosure FR-16 uses `/data/EventsTypeData` — see Stack section above, authorized 2026-07-12.)*

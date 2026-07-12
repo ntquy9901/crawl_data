@@ -59,7 +59,8 @@ def main():
         lines.append(f"## {emoji}{label} — {len(rows)} bài")
         for _, r in rows.iterrows():
             pd_raw = r["pub_date"]
-            pd_ = str(pd_raw)[:16].replace("T", " ") if pd.notna(pd_raw) and str(pd_raw) != "nan" else ""
+            pd_ = (str(pd_raw)[:16].replace("T", " ")
+                   if pd.notna(pd_raw) and str(pd_raw) != "nan" else "")
             lead = str(r.get("lead", "") or "")[:140]
             title = str(r.get("title", "") or "(không tiêu đề)")
             lines.append(f"- **{title}**{_fmt(pd_)}")

@@ -26,12 +26,22 @@ from pathlib import Path
 import requests
 
 from cafef_config import (
-    BASE_URL, RSS_URL_FMT, SITEMAP_INDEX,
-    CAFEF_SECTIONS, DEFAULT_SECTIONS, CSV_HEADERS, CSV_FILE, CANDIDATES_CACHE,
-    REQUEST_TIMEOUT, REQUEST_DELAY, MAX_RETRIES, USER_AGENT,
-    USE_PROXY, PROXY_FILE,
+    CAFEF_SECTIONS,
+    CANDIDATES_CACHE,
+    CSV_FILE,
+    CSV_HEADERS,
+    DEFAULT_SECTIONS,
+    MAX_RETRIES,
+    PROXY_FILE,
+    REQUEST_DELAY,
+    REQUEST_TIMEOUT,
+    RSS_URL_FMT,
+    SITEMAP_INDEX,
+    USE_PROXY,
+    USER_AGENT,
     ensure_paths_exist,
 )
+from utils.body_extractor import extract_html_body
 
 UA_HEADERS = {"User-Agent": USER_AGENT, "Accept-Language": "vi,en;q=0.9"}
 ID_RE = re.compile(r"-(\d{17,20})\.chn(?:[?#]|$)")
@@ -68,7 +78,7 @@ def _load_proxy_pool():
     if not USE_PROXY or not PROXY_FILE.exists():
         return []
     out = []
-    with open(PROXY_FILE, "r", encoding="utf-8") as f:
+    with open(PROXY_FILE, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line and not line.startswith("#") and ":" in line:
@@ -95,7 +105,8 @@ def _proxy_kwargs():
 
 
 def _fetch_once(url: str, timeout: int = 15):
-    """GET 1 lần, ngắn — cho backfill (rất nhiều request). Dùng proxy xoay vòng nếu CAFEF_USE_PROXY."""
+    """GET 1 lần, ngắn — cho backfill (rất nhiều request).
+    Dùng proxy xoay vòng nếu CAFEF_USE_PROXY."""
     try:
         r = requests.get(url, headers=UA_HEADERS, timeout=timeout, **_proxy_kwargs())
         if r.status_code == 200:
@@ -207,7 +218,7 @@ def save_candidates(path: Path, candidates: list) -> None:
 def load_candidates(path: Path) -> list:
     """Đọc candidate cache (JSONL), dedup theo url."""
     out, seen = [], set()
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -225,7 +236,7 @@ def load_candidates(path: Path) -> list:
 
 
 def classify_one(cand: dict, sections_set: set) -> dict:
-    """Fetch 1 bài → trả {section, title, lead}. section='' nếu không thuộc sections."""
+    """Fetch 1 bài → trả {section, title, lead, body}. section='' nếu không thuộc sections."""
     h = _fetch_once(cand["url"])
     if not h:
         return {"section": "", "title": cand.get("title", ""), "lead": ""}
@@ -255,7 +266,8 @@ def classify_one(cand: dict, sections_set: set) -> dict:
          or re.search(r'<meta[^>]+name="description"[^>]*content="([^"]*)"', h))
     if m:
         lead = html.unescape(m.group(1))[:500]
-    return {"section": section, "title": title, "lead": lead}
+    body = extract_html_body(h, "cafef")
+    return {"section": section, "title": title, "lead": lead, "body": body}
 
 
 # ---------- crawler ----------
@@ -270,7 +282,7 @@ class CafefNewsCrawler:
     def _load_seen(self) -> set:
         seen = set()
         if self.csv_file.exists():
-            with open(self.csv_file, "r", encoding="utf-8-sig", newline="") as f:
+            with open(self.csv_file, encoding="utf-8-sig", newline="") as f:
                 for row in csv.DictReader(f):
                     u = row.get("article_url")
                     if u:
@@ -365,7 +377,10 @@ class CafefNewsCrawler:
             print(f"  cached -> {cache_file}  (lần sau dùng cache, bỏ qua quét shard)")
 
         todo = [c for c in candidates if c["url"] not in self.seen]
-        print(f"  unseen candidates: {len(todo)}  (already collected: {len(candidates) - len(todo)})")
+        print(
+            f"  unseen candidates: {len(todo)}  "
+            f"(already collected: {len(candidates) - len(todo)})"
+        )
 
         # 2) classify + thu thập song song
         kept = out_section = fail = 0
@@ -393,12 +408,16 @@ class CafefNewsCrawler:
                         "article_url": c["url"],
                         "author": "",
                         "lead": res.get("lead", ""),
+                        "body": res.get("body", ""),
                         "collected_at": now_iso(),
                     })
                     kept += 1
                     if len(batch) >= 200:
                         self._append(batch)
-                        print(f"  saved kept={kept} (processed {processed}/{len(todo)}) [{time.time()-t0:.0f}s]")
+                        print(
+                            f"  saved kept={kept} (processed {processed}/{len(todo)}) "
+                            f"[{time.time()-t0:.0f}s]"
+                        )
                         batch = []
                 elif not res["section"]:
                     out_section += 1
@@ -407,7 +426,10 @@ class CafefNewsCrawler:
                         f.cancel()
                     break
                 if processed % 1000 == 0:
-                    print(f"  progress processed={processed}/{len(todo)} kept={kept} out_section={out_section} fail={fail} [{time.time()-t0:.0f}s]")
+                    print(
+                        f"  progress processed={processed}/{len(todo)} kept={kept} "
+                        f"out_section={out_section} fail={fail} [{time.time()-t0:.0f}s]"
+                    )
         if batch:
             self._append(batch)
 
@@ -440,11 +462,61 @@ def _parse_date(s, default):
         sys.exit(2)
 
 
+def fetch_bodies(csv_file: Path, workers: int = 3, test: bool = False, limit: int = 0) -> None:
+    """Re-fetch body cho các row body rỗng trong cafef CSV (bypass seen). Ghi in-place.
+
+    Cafef throttle IP → dùng proxy (CAFEF_USE_PROXY) + workers thấp (3)."""
+    with open(csv_file, encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.DictReader(f))
+    if not rows:
+        return
+    fieldnames = list(rows[0].keys())
+    if "body" not in fieldnames:
+        fieldnames.append("body")
+    todo = [r for r in rows if not (r.get("body") or "").strip()]
+    if test:
+        todo = todo[:5]
+    elif limit:
+        todo = todo[:limit]
+    print(f"--fetch-body: {len(todo)}/{len(rows)} rows need body, workers={workers}")
+    if not todo:
+        return
+
+    def one(row: dict) -> bool:
+        url = row.get("article_url") or row.get("url") or ""
+        if not url:
+            return False
+        h = _fetch_once(url)
+        if not h:
+            return False
+        row["body"] = extract_html_body(h, "cafef")
+        return bool(row["body"])
+
+    done = fail = 0
+    t0 = time.time()
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {ex.submit(one, r): r for r in todo}
+        for i, fut in enumerate(as_completed(futs), 1):
+            if fut.result():
+                done += 1
+            else:
+                fail += 1
+            if i % 100 == 0 or i == len(todo):
+                print(f"  {i}/{len(todo)} body={done} fail={fail} [{time.time()-t0:.0f}s]")
+    with open(csv_file, "w", encoding="utf-8-sig", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(rows)
+    print(f"-> {csv_file}: body filled {done}/{len(todo)} (fail={fail})")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Cafef news crawler (RSS daily + sitemap backfill)")
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--daily", action="store_true", help="chế độ daily (RSS)")
     mode.add_argument("--backfill", action="store_true", help="chế độ backfill (sitemap shards)")
+    mode.add_argument("--fetch-body", action="store_true",
+                      help="re-fetch body cho các row body rỗng (dùng proxy + --workers 3)")
     ap.add_argument("--sections", nargs="*", default=None,
                     help=f"slug section (default: {' '.join(DEFAULT_SECTIONS)})")
     ap.add_argument("--test", action="store_true", help="daily: giới hạn 5 item/section")
@@ -452,11 +524,13 @@ def main():
     # backfill
     ap.add_argument("--from-date", type=str, default=None,
                     help="backfill từ YYYY-MM-DD (default 2016-01-01 = sitemap floor)")
-    ap.add_argument("--end-date", type=str, default=None, help="backfill đến YYYY-MM-DD (default: hôm nay)")
+    ap.add_argument("--end-date", type=str, default=None,
+                    help="backfill đến YYYY-MM-DD (default: hôm nay)")
     ap.add_argument("--max-articles", type=int, default=0, help="cap số bài thu thập (0=∞)")
     ap.add_argument("--workers", type=int, default=6, help="số luồng fetch song song (backfill)")
     ap.add_argument("--refresh-shards", action="store_true",
-                    help="bỏ cache candidate, quét lại sitemap shards (lấy bài mới publish sau lần cache)")
+                    help="bỏ cache candidate, quét lại sitemap shards "
+                         "(lấy bài mới publish sau lần cache)")
     args = ap.parse_args()
 
     sections = args.sections or DEFAULT_SECTIONS
@@ -467,7 +541,9 @@ def main():
 
     crawler = CafefNewsCrawler(sections=sections, csv_file=args.csv)
 
-    if args.backfill:
+    if args.fetch_body:
+        fetch_bodies(Path(args.csv), workers=args.workers, test=args.test)
+    elif args.backfill:
         from_d = _parse_date(args.from_date, datetime.strptime("2016-01-01", "%Y-%m-%d").date())
         end_d = _parse_date(args.end_date, datetime.now(HN_TZ).date())
         crawler.crawl_backfill(from_d, end_d, max_articles=args.max_articles,

@@ -7,6 +7,7 @@ Plain HTTP (requests) — cafef không cần Playwright/stealth.
 
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -61,6 +62,7 @@ CSV_HEADERS = [
     "article_url",
     "author",        # có thể rỗng với RSS
     "lead",          # sapo/đoạn đầu (strip HTML từ RSS description)
+    "body",          # nội dung đầy đủ (backfill --fetch-body)
     "collected_at",  # ISO timestamp lúc cào
 ]
 
