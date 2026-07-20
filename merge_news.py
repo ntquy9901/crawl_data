@@ -7,16 +7,21 @@ from pathlib import Path
 
 import pandas as pd
 
+from data_classification import classify
+
 DATA = Path(__file__).parent / "data"
 # file + rename map (đưa về schema chung). Cafef dùng tên cột khác (article_url/section).
 SOURCES = {
-    "cafef":    ("cafef_articles.csv",    {"article_url": "url", "section": "category"}),
-    "ssi":      ("ssi_articles.csv",      {}),
-    "hsc":      ("hsc_articles.csv",      {}),
-    "vndirect": ("vndirect_articles.csv", {}),
+    "cafef":       ("cafef_articles.csv",       {"article_url": "url", "section": "category"}),
+    "ssi":         ("ssi_articles.csv",         {}),
+    "hsc":         ("hsc_articles.csv",         {}),
+    "vndirect":    ("vndirect_articles.csv",    {}),
+    "tuoitre":     ("tuoitre_articles.csv",     {}),
+    "thanhnien":   ("thanhnien_articles.csv",   {}),
+    "vietnamplus": ("vietnamplus_articles.csv", {}),
 }
 UNIFIED = [
-    "source", "title", "category", "pub_date",
+    "source", "data_type", "title", "category", "pub_date",
     "url", "author", "lead", "body", "pdf_url", "collected_at",
 ]
 
@@ -31,6 +36,7 @@ def main():
         df = pd.read_csv(p, encoding="utf-8-sig")
         df = df.rename(columns=renames)
         df["source"] = src
+        df["data_type"] = df["source"].map(classify)
         for c in UNIFIED:
             if c not in df.columns:
                 df[c] = ""

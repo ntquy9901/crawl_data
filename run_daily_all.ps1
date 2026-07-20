@@ -11,6 +11,11 @@ Run "Cafef daily (RSS, 3 section)" "python cafef_crawler.py --daily --csv data/c
 Run "SSI latest (Bản Tin Thị Trường)" "python ssi_crawler.py --latest --csv data/ssi_articles.csv"
 Run "HSC latest (Research Insights)" "python hsc_crawler.py --latest --csv data/hsc_articles.csv"
 
+# tuoitre/thanhnien/vietnamplus: sitemap 7 ngày gần nhất (backfill đầy đủ đã chạy 1 lần)
+foreach ($src in @("tuoitre", "thanhnien", "vietnamplus")) {
+    Run "$src latest (sitemap 7 ngày)" "python news_sitemap_crawler.py --source $src --latest --csv data/${src}_articles.csv"
+}
+
 # VNDIRECT: 4 category (Playwright, chậm hơn)
 foreach ($cat in @("company-note", "sector-note", "strategy-note", "economics-note")) {
     Run "VNDIRECT latest ($cat)" "python vndirect_crawler.py --latest --category $cat --csv data/vndirect_articles.csv"

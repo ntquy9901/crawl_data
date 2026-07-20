@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+	<sitemap>
+		<loc>https://tuoitre.vn/sitemaps/category.rss</loc>
+			<lastmod>2026-07-18T10:00:32+07:00</lastmod>
+		</sitemap>
+	<sitemap>
+		<loc>https://tuoitre.vn/StaticSitemaps/sitemaps-2026-7-16-20.xml</loc>
+			<lastmod>2011-01-01T00:00:00+07:00</lastmod>
+		</sitemap>
+	<sitemap>
+		<loc>https://tuoitre.vn/StaticSitemaps/sitemaps-2011-1-1-5.xml</loc>
+			<lastmod>2011-01-01T00:00:00+07:00</lastmod>
+		</sitemap>
+</sitemapindex>

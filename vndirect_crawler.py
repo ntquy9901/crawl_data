@@ -12,7 +12,13 @@ Sequence (1 browser, dùng cho các trang listing). workers=1 (Playwright sync).
 Dùng: python vndirect_crawler.py --latest --category company-note
        python vndirect_crawler.py --range --from-date 2026-01-01 --category company-note
        python vndirect_crawler.py --latest --test --category company-note   # 5 bài thử
+       python vndirect_crawler.py --latest --category company-note --lang vi  # bản tiếng Việt
 Category: company-note (default) | sector-note | strategy-note | economics-note.
+
+--lang vi/en (mặc định en): mỗi category có bản tiếng Việt RIÊNG (slug + nội dung khác, không
+phải bản dịch UI của trang en) — hreflang="vi" trên trang /en/category/<cat>/ trỏ tới
+/category/<slug-vi>/ (khảo sát 2026-07-18). Ghi vào CÙNG CSV, phân biệt bằng cột `category`
+hậu tố `-vi` (vd `company-note-vi`) — dedup theo url nên không đụng bản en.
 """
 
 import argparse
@@ -27,6 +33,13 @@ from base_news_crawler import UA, BaseNewsCrawler, now_iso, short_id, strip_html
 from utils.body_extractor import extract_html_body
 
 CATEGORIES = ["company-note", "sector-note", "strategy-note", "economics-note"]
+# slug tiếng Việt cho mỗi category (từ hreflang="vi" trên trang /en/category/<cat>/)
+VI_SLUGS = {
+    "company-note": "bao-cao-phan-tich-dn",
+    "sector-note": "bao-cao-nganh",
+    "strategy-note": "bao-cao-chien-luoc",
+    "economics-note": "bao-cao-vi-mo-vi-chuyen-de-su-kien",
+}
 LAUNCH_ARGS = [
     "--disable-blink-features=AutomationControlled",
     "--disable-dev-shm-usage", "--no-sandbox", "--disable-setuid-sandbox",
@@ -37,9 +50,10 @@ class VndirectCrawler(BaseNewsCrawler):
     source = "vndirect"
     base_url = "https://www.vndirect.com.vn"
 
-    def __init__(self, category="company-note", **kw):
+    def __init__(self, category="company-note", lang="en", **kw):
         super().__init__(workers=1, **kw)  # listing-complete + Playwright → sequence
         self.category = category
+        self.lang = lang
         self._pw = self._browser = self._ctx = self._page = None
 
     # ---------- Playwright (stealth) ----------
@@ -152,11 +166,15 @@ class VndirectCrawler(BaseNewsCrawler):
 
     # ---------- hooks ----------
     def listing_url(self, page: int) -> str:
-        base = f"{self.base_url}/en/category/{self.category}/"
+        if self.lang == "vi":
+            base = f"{self.base_url}/category/{VI_SLUGS[self.category]}/"
+        else:
+            base = f"{self.base_url}/en/category/{self.category}/"
         return base if page <= 1 else f"{base}page/{page}/"
 
     def parse_listing(self, html_text: str, page: int) -> list:
-        """Mỗi card `news-item` → title + url + date + category + lead."""
+        """Mỗi card `news-item` → title + url + date + category + lead.
+        Trang vi ghi năm dạng "năm 2026" thay vì "Year 2026" (en)."""
         items = []
         for card in re.split(r"news-item flex-item", html_text)[1:]:
             card = card[:2500]
@@ -166,17 +184,20 @@ class VndirectCrawler(BaseNewsCrawler):
             m_title = re.search(r"<h3>\s*<a[^>]*>(.*?)</a>", card, re.S)
             m_day = re.search(r'date-day">(\d+)</span>', card)
             m_mon = re.search(r"<sup>/(\d+)</sup>", card)
-            m_yr = re.search(r"Year\s*(\d+)", card)
+            # scope tới đúng markup date-year (không chỉ tìm "năm" bất kỳ đâu trong card -
+            # "năm" là từ phổ biến, có thể xuất hiện trong news-des/lead, vd "năm 2025")
+            m_yr = re.search(r'date-year[^"]*"[^>]*>\s*(?:Year|năm)\s*(\d+)', card)
             m_lead = re.search(r"news-des[^>]*>(.*?)</div>", card, re.S)
             pub = (
                 f"{m_day.group(1)}/{m_mon.group(1)}/{m_yr.group(1)}"
                 if (m_day and m_mon and m_yr) else ""
             )
+            category = self.category if self.lang != "vi" else f"{self.category}-vi"
             items.append({
                 "url": m_href.group(1),
                 "title": strip_html(m_title.group(1)) if m_title else "",
                 "pub_date": pub,  # DD/MM/YYYY
-                "category": self.category,
+                "category": category,
                 "lead": strip_html(m_lead.group(1))[:500] if m_lead else "",
             })
         return items
@@ -204,6 +225,8 @@ class VndirectCrawler(BaseNewsCrawler):
         mode.add_argument("--fetch-body", action="store_true",
                           help="re-fetch body qua Playwright (Cloudflare) cho row body rỗng")
         ap.add_argument("--category", default="company-note", choices=CATEGORIES)
+        ap.add_argument("--lang", default="en", choices=["en", "vi"],
+                        help="en (mặc định) hoặc vi (bản tiếng Việt riêng, category hậu tố -vi)")
         ap.add_argument("--from-date", type=str, default=None)
         ap.add_argument("--end-date", type=str, default=None)
         ap.add_argument("--max-pages", type=int, default=0)
@@ -222,7 +245,7 @@ class VndirectCrawler(BaseNewsCrawler):
                 sys.exit(2)
 
         start, end = pd(args.from_date), pd(args.end_date)
-        c = cls(category=args.category, csv_file=args.csv,
+        c = cls(category=args.category, lang=args.lang, csv_file=args.csv,
                 max_articles=5 if args.test else args.max_articles)
         if args.fetch_body:
             c.fetch_bodies(test=args.test)

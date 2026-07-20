@@ -68,6 +68,7 @@ Thu thập dữ liệu phân tích/tin tức thị trường CK Việt Nam đa n
 - **Vietstock** — "Báo cáo phân tích" PDF từ `finance.vietstock.vn/bao-cao-phan-tich` → `data/vnstock_articles.csv` + `data/pdf/`. Metadata toàn kỳ 2001–2026, PDF kỳ gần.
 - **Cafef** — tin tức thị trường hằng ngày (RSS + sitemap backfill) → `data/cafef_articles.csv`.
 - **SSI / HSC / VNDIRECT** — research/notes CTCK → `data/{ssi,hsc,vndirect}_articles.csv` (qua khung `base_news_crawler.py`).
+- **Tuổi Trẻ / Thanh Niên / VietnamPlus** — tin tức phổ thông, metadata-only (title/url/pub_date), qua `news_sitemap_crawler.py` → `data/{tuoitre,thanhnien,vietnamplus}_articles.csv`.
 Mỗi crawler có cột `source` ghi nguồn (lưu vết/phân loại) + dedup riêng (resumable). Chạy định kỳ qua Windows Task Scheduler (`run_daily_all.ps1`).
 
 ## Stack & ràng buộc
@@ -93,7 +94,8 @@ Mỗi crawler có cột `source` ghi nguồn (lưu vết/phân loại) + dedup r
 - `cafef_crawler.py` + `cafef_config.py` — crawler tin tức Cafef (sibling của Vietstock): daily RSS (`--daily`) + backfill sitemap shards (`--backfill`, classify section bằng breadcrumb). Self-contained (riêng dedup, không đụng `utils/dedup.py`). Output `data/cafef_articles.csv`.
 - `base_news_crawler.py` — khung crawler tin tức **tổng quát** (Template Method: subclass override `source`/`listing_url`/`parse_listing`/`parse_article`/`next_page`; base lo flow + dedup + `--workers`/`--batch` + audit log `logs/<source>_audit.log` + resume theo url). Mode `--latest` (daily) / `--range --from-date --end-date`.
 - `ssi_crawler.py` (PDF bulletins, listing-complete), `hsc_crawler.py` (Research Insights, daily-only, không có pub_date), `vndirect_crawler.py` (research notes, **Playwright-stealth vượt Cloudflare**, `--category company/sector/strategy/economics-note`) — 3 subclass. Output `data/<source>_articles.csv` (cột `source` ghi nguồn).
-- `merge_news.py` — gộp cafef/ssi/hsc/vndirect → `data/news_articles.csv` (schema chung, cột `source`, dedup theo url). `morning_digest.py` — tạo bản tin sáng markdown (`data/digest_YYYY-MM-DD.md`) từ bài mới nhất, nhóm theo nguồn — đọc trước khi đầu tư.
+- `news_sitemap_crawler.py` — crawler tin tức phổ thông metadata-only (subclass `base_news_crawler.BaseNewsCrawler`, chỉ override `crawl_backfill` — topology sitemap-shard khác paginated-listing nên không dùng `crawl_latest`/`crawl_range`/`parse_listing`). Nguồn: tuoitre/thanhnien/vietnamplus — sitemap 3 site này nhúng sẵn title (`image:title`/`news:title`) nên KHÔNG cần fetch từng bài. `--source <tên> [--latest | --from-date/--end-date]`. nld/vnexpress KHÔNG có: nld.com.vn redirect toàn bộ sang tuoitre.vn/nld/* (trùng nội dung); vnexpress chặn bot ở sitemap-shard theo ngày (xem docstring file để biết chi tiết khảo sát).
+- `merge_news.py` — gộp cafef/ssi/hsc/vndirect/tuoitre/thanhnien/vietnamplus → `data/news_articles.csv` (schema chung, cột `source`, dedup theo url). `morning_digest.py` — tạo bản tin sáng markdown (`data/digest_YYYY-MM-DD.md`) từ bài mới nhất, nhóm theo nguồn — đọc trước khi đầu tư.
 - `utils/anti_bot.py` — stealth browser, `safe_goto`/`safe_click`, `human_like_scroll`, `get_random_user_agent`.
 - `utils/dedup.py` — `DedupManager` (check URL/ID trong CSV).
 - `utils/proxy_manager.py` — xoay vòng proxy (`USE_PROXY=false`, chưa dùng thật).
@@ -121,6 +123,8 @@ PYTHONUTF8=1 python ssi_crawler.py --range --max-pages 220                      
 PYTHONUTF8=1 python hsc_crawler.py --latest                                     # HSC (daily-only)
 PYTHONUTF8=1 python vndirect_crawler.py --latest --category company-note        # VNDIRECT (Playwright; cần cho Cloudflare)
 PYTHONUTF8=1 python vndirect_crawler.py --range --max-pages 80 --category company-note
+PYTHONUTF8=1 python news_sitemap_crawler.py --source tuoitre                    # backfill floor→nay (~15 năm, chạy 1 lần)
+PYTHONUTF8=1 python news_sitemap_crawler.py --source thanhnien --latest         # daily (7 ngày gần nhất)
 powershell -ExecutionPolicy Bypass -File run_daily_all.ps1                      # chạy tất cả daily 1 lệnh
 ```
 Flags: `--start-date/--end-date` (per-report filter trong window mặc định), `--from-date` (window-crawl tới dữ liệu cũ, `--window-months N` mặc định 6), `--max-pages N` (0=∞), `--test`, `--headless true|false`.
@@ -130,7 +134,7 @@ Luôn set `PYTHONUTF8=1` trên Windows (CSV luôn UTF-8 BOM).
 ## Trạng thái (2026-07-06)
 - ✅ Pagination (JS `#report-paging`), ✅ Captcha pause 5 phút + retry 3 lần, ✅ Download (browser UA + retry + `context.request.get()`), ✅ Date-bounded crawl, ✅ `--max-pages`/`--start-page`, ✅ `DOWNLOAD_PDF` toggle (default false = metadata-only nhanh), ✅ **Window-crawl `--from-date`** (lấy dữ liệu cũ qua date filter — listing mặc định khoá ~1 năm), ✅ `merge_csv.py` (gộp backfill song song).
 - **Dataset Vietstock**: `data/vnstock_articles.csv` = **14.825 reports unique** (theo `pdf_url`; gộp `data.csv` + `data_archive.csv` + `data_2021_2025.csv` + re-crawl 2015–2018), **2001–2026**, **2.336 PDF** (chỉ 2026; 2001-2025 metadata-only).
-- **News datasets** (cột `source`, schema chung): `cafef_articles.csv` ~3.450 (daily RSS tích lũy; **deep backfill KHÔNG khả thi** — cafef throttle IP + sitemap không tag section → classify-all cost, xem `docs/anti-throttle.md`), `ssi_articles.csv` 1.859 (đã đủ ~217 trang), `hsc_articles.csv` 6 (HSC ít + **không pub_date**), `vndirect_articles.csv` 967 (đã đủ 4 category, archive chỉ từ 2016). **Gộp** `news_articles.csv` = 6.282 rows (`merge_news.py`).
+- **News datasets** (cột `source`, schema chung): `cafef_articles.csv` ~3.450 (daily RSS tích lũy; **deep backfill KHÔNG khả thi** — cafef throttle IP + sitemap không tag section → classify-all cost, xem `docs/anti-throttle.md`), `ssi_articles.csv` 1.859 (đã đủ ~217 trang), `hsc_articles.csv` 6 (HSC ít + **không pub_date**), `vndirect_articles.csv` 967 (đã đủ 4 category, archive chỉ từ 2016). `tuoitre_articles.csv` 283.568 (floor 2011-01), `thanhnien_articles.csv` 387.169 (floor 2011-06), `vietnamplus_articles.csv` 773.152 (floor 2010-01) — backfill đầy đủ 2026-07-18, metadata-only qua `news_sitemap_crawler.py` (xem file đó để biết vì sao nld/vnexpress không có). **Gộp** `news_articles.csv` = 1.450.798 rows (`merge_news.py`).
 - **Vietstock verify (2026-07-06)**: re-crawl 2008-2025 → **không miss hệ thống** (2016 là transient cô lập). Dataset 14.825 tin cậy.
 - **Hằng ngày**: Task Scheduler `CrawlDailyNews` @ 05:00 chạy `run_daily_all.ps1` (crawl tất cả nguồn + `merge_news` + `morning_digest` → `data/digest_YYYY-MM-DD.md` đọc trước 6h). `cafef_crawler` có sẵn proxy xoay vòng (`CAFEF_USE_PROXY` + `proxies.txt`, 10 Webshare).
 - ✅ **Gap 2006-2007 = gap THẬT của site** (verify 2026-07-04: date filter trả ~0) — không sửa được.

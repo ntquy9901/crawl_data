@@ -1,0 +1,17 @@
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <url>
+    <loc>https://tuoitre.vn/mot-bai-viet-vi-du-100260715231418891.htm</loc>
+    <lastmod>2026-07-15T23:23+07:00</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.6</priority>
+    <image:image>
+      <image:loc>https://cdn2.tuoitre.vn/example.jpg</image:loc>
+      <image:title>&lt;![CDATA[Một bài viết ví dụ]]&gt;</image:title>
+      <image:caption>&lt;![CDATA[Một bài viết ví dụ]]&gt;</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://tuoitre.vn/khong-phai-bai-viet.htm.rss</loc>
+    <lastmod>2026-07-15T20:00+07:00</lastmod>
+  </url>
+</urlset>
