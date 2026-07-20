@@ -19,6 +19,7 @@ SOURCES = {
     "tuoitre":     ("tuoitre_articles.csv",     {}),
     "thanhnien":   ("thanhnien_articles.csv",   {}),
     "vietnamplus": ("vietnamplus_articles.csv", {}),
+    "vnexpress":   ("vnexpress_articles.csv",   {}),
 }
 UNIFIED = [
     "source", "data_type", "title", "category", "pub_date",
