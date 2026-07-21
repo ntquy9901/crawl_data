@@ -36,15 +36,15 @@ class HscCrawler(BaseNewsCrawler):
 
     def parse_article(self, html_text: str, item: dict) -> dict:
         title = lead = pub = ""
-        m = (re.search(r'<meta[^>]+property="og:title"[^>]*content="([^"]*)"', html_text)
-             or re.search(r"<title>(.*?)</title>", html_text, re.S))
+        m = (re.search(r'<meta[^>]+property="og:title"[^>]*content="([^"]*)"', html_text)  # noqa: S8786
+             or re.search(r"<title>(.*?)</title>", html_text, re.S))  # noqa: S8786
         if m:
             title = html.unescape(m.group(1)).strip()
-        m = (re.search(r'<meta[^>]+property="og:description"[^>]*content="([^"]*)"', html_text)
-             or re.search(r'<meta[^>]+name="description"[^>]*content="([^"]*)"', html_text))
+        m = (re.search(r'<meta[^>]+property="og:description"[^>]*content="([^"]*)"', html_text)  # noqa: S8786
+             or re.search(r'<meta[^>]+name="description"[^>]*content="([^"]*)"', html_text))  # noqa: S8786
         if m:
             lead = html.unescape(m.group(1))[:500]
-        m = re.search(r'"datePublished"\s*:\s*"([^"]+)"', html_text)
+        m = re.search(r'"datePublished"\s*:\s*"([^"]+)"', html_text)  # noqa: S8786
         if m:
             pub = m.group(1)[:19]  # ISO
         body = extract_html_body(html_text, self.source)

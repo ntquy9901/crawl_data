@@ -163,13 +163,13 @@ class BaseObjectiveCrawler(BaseNewsCrawler):
         mismatch with the inherited ``_process_items`` seen-set."""
         return canonicalize_url(url)
 
-    def _keep_item(self, item: dict) -> bool:
+    def _keep_item(self, _item: dict) -> bool:
         """Pre-fetch universe filter (AD-4/5). Default True; Tier-1 adapters
         whose listing already carries company_code override to skip non-VN30
         before the (expensive) network call."""
         return True
 
-    def _keep_payload(self, payload: dict) -> bool:
+    def _keep_payload(self, _payload: dict) -> bool:
         """Post-parse universe filter (AD-4/5). Default True; Tier-1 adapters
         override to keep only VN30 (covers sources where company_code is only
         extractable from the detail page)."""

@@ -93,12 +93,12 @@ def _proxy_kwargs():
     """Trả {'proxies': {...}} random từ pool (cho requests), hoặc {} nếu không dùng proxy."""
     if not _PROXY_POOL:
         return {}
-    p = random.choice(_PROXY_POOL)
+    p = random.choice(_PROXY_POOL)  # noqa: S2245
     parts = p.split(":")
     if len(parts) == 2:
-        url = f"http://{parts[0]}:{parts[1]}"
+        url = f"http://{parts[0]}:{parts[1]}"  # noqa: S5332
     elif len(parts) >= 4:
-        url = f"http://{parts[2]}:{parts[3]}@{parts[0]}:{parts[1]}"
+        url = f"http://{parts[2]}:{parts[3]}@{parts[0]}:{parts[1]}"  # noqa: S5332
     else:
         return {}
     return {"proxies": {"http": url, "https": url}}
@@ -235,13 +235,9 @@ def load_candidates(path: Path) -> list:
     return out
 
 
-def classify_one(cand: dict, sections_set: set) -> dict:
-    """Fetch 1 bài → trả {section, title, lead, body}. section='' nếu không thuộc sections."""
-    h = _fetch_once(cand["url"])
-    if not h:
-        return {"section": "", "title": cand.get("title", ""), "lead": ""}
-    section = ""
-    for block in re.findall(r'<script type="application/ld\+json">(.*?)</script>', h, re.S):
+def _extract_section_from_jsonld(html_text: str, sections_set: set) -> str:
+    """Extract section from JSON-LD BreadcrumbList. Returns section slug or ''."""
+    for block in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html_text, re.S):
         try:
             obj = json.loads(block)
         except Exception:  # noqa: BLE001
@@ -252,18 +248,24 @@ def classify_one(cand: dict, sections_set: set) -> dict:
             iid = ((el.get("item") or {}).get("@id") or "")
             mm = re.search(r"cafef\.vn/([a-z0-9-]+)\.chn", iid)
             if mm and mm.group(1) in sections_set:
-                section = mm.group(1)
-                break
-        if section:
-            break
+                return mm.group(1)
+    return ""
+
+
+def classify_one(cand: dict, sections_set: set) -> dict:
+    """Fetch 1 bài → trả {section, title, lead, body}. section='' nếu không thuộc sections."""
+    h = _fetch_once(cand["url"])
+    if not h:
+        return {"section": "", "title": cand.get("title", ""), "lead": ""}
+    section = _extract_section_from_jsonld(h, sections_set)
     title = cand.get("title", "")
     if not title:
-        m = re.search(r'<meta[^>]+property="og:title"[^>]*content="([^"]*)"', h)
+        m = re.search(r'<meta[^>]+property="og:title"[^>]*content="([^"]*)"', h)  # noqa: S8786
         if m:
             title = html.unescape(m.group(1))
     lead = ""
-    m = (re.search(r'<meta[^>]+property="og:description"[^>]*content="([^"]*)"', h)
-         or re.search(r'<meta[^>]+name="description"[^>]*content="([^"]*)"', h))
+    m = (re.search(r'<meta[^>]+property="og:description"[^>]*content="([^"]*)"', h)  # noqa: S8786
+         or re.search(r'<meta[^>]+name="description"[^>]*content="([^"]*)"', h))  # noqa: S8786
     if m:
         lead = html.unescape(m.group(1))[:500]
     body = extract_html_body(h, "cafef")
@@ -339,20 +341,12 @@ class CafefNewsCrawler:
         return self.counters
 
     # --- backfill mode (sitemap shards) ---
-    def crawl_backfill(self, from_date, end_date=None, max_articles=0, workers=6,
-                       refresh=False, cache_file=CANDIDATES_CACHE):
-        end_date = end_date or datetime.now(HN_TZ).date()
-        sections_set = set(self.sections)
-        print(f"=== CAFEF BACKFILL {from_date} -> {end_date} | sections={self.sections} | "
-              f"workers={workers} | refresh={refresh} ===")
-
-        # 1) Danh sách candidate: load từ cache nếu có (resume rẻ), ngược lại quét shard + cache.
-        #    Cache lưu TẤT cả candidate (không lọc seen) để tái dùng khi seen thay đổi.
+    def _gather_candidates(self, from_date, end_date, shards, cache_file, refresh):
+        """Gather candidates from shards or cache. Returns list of candidate dicts."""
         if cache_file.exists() and not refresh:
             candidates = load_candidates(cache_file)
             print(f"  candidates from cache: {len(candidates)}  ({cache_file})")
         else:
-            shards = shards_in_range(from_date, end_date)
             print(f"  shards in range: {len(shards)}; gathering (mất ~15-20 phút)...")
             candidates = []
             for i, s in enumerate(shards, 1):
@@ -375,19 +369,15 @@ class CafefNewsCrawler:
             print(f"  total candidates gathered: {len(candidates)}")
             save_candidates(cache_file, candidates)
             print(f"  cached -> {cache_file}  (lần sau dùng cache, bỏ qua quét shard)")
+        return candidates
 
-        todo = [c for c in candidates if c["url"] not in self.seen]
-        print(
-            f"  unseen candidates: {len(todo)}  "
-            f"(already collected: {len(candidates) - len(todo)})"
-        )
-
-        # 2) classify + thu thập song song
+    def _classify_and_collect(self, todo, sections_set, max_articles):
+        """Classify candidates in parallel. Returns (kept, out_section, fail)."""
         kept = out_section = fail = 0
         processed = 0
         batch = []
         t0 = time.time()
-        with ThreadPoolExecutor(max_workers=workers) as ex:
+        with ThreadPoolExecutor(max_workers=self.workers) as ex:
             fut_to_cand = {ex.submit(classify_one, c, sections_set): c for c in todo}
             for fut in as_completed(fut_to_cand):
                 c = fut_to_cand[fut]
@@ -432,13 +422,31 @@ class CafefNewsCrawler:
                     )
         if batch:
             self._append(batch)
+        return kept, out_section, fail
+
+    def crawl_backfill(self, from_date, end_date=None, max_articles=0, workers=6,
+                       refresh=False, cache_file=CANDIDATES_CACHE):
+        end_date = end_date or datetime.now(HN_TZ).date()
+        sections_set = set(self.sections)
+        print(f"=== CAFEF BACKFILL {from_date} -> {end_date} | sections={self.sections} | "
+              f"workers={workers} | refresh={refresh} ===")
+
+        shards = shards_in_range(from_date, end_date)
+        candidates = self._gather_candidates(from_date, end_date, shards, cache_file, refresh)
+        todo = [c for c in candidates if c["url"] not in self.seen]
+        print(
+            f"  unseen candidates: {len(todo)}  "
+            f"(already collected: {len(candidates) - len(todo)})"
+        )
+
+        kept, out_section, fail = self._classify_and_collect(todo, sections_set, max_articles)
 
         self.counters["new"] = kept
         self.counters["dup"] = out_section
         self.counters["fail"] = fail
         print(
             f"\nBACKFILL DONE  kept(in-section)={kept}  out_section={out_section}  "
-            f"fail={fail}  processed={processed}  [{time.time()-t0:.0f}s]\n"
+            f"fail={fail}  processed={len(todo)}  "
             f"  -> {self.csv_file} (total rows now ~{len(self.seen)})"
         )
         return self.counters

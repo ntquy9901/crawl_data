@@ -97,6 +97,43 @@ def _pdf_body(path: Path, cache: dict) -> str:
     return b
 
 
+def _process_source_rows(
+    origin: str, rows: list[dict], no_pdf: bool, pdf_cache: dict, limit: int
+) -> list[dict]:
+    """Process rows from a single source into unified records. Returns list of records."""
+    records = []
+    for r in rows:
+        url = r.get("url") or r.get("article_url") or r.get("pdf_url") or ""
+        if not url:
+            continue
+        body = (r.get("body") or "").strip()
+        if not body and not no_pdf:
+            if origin == "vietstock":
+                p = resolve_pdf_local_path("vietstock", r, data_path=DATA)
+                body = _pdf_body(p, pdf_cache) if p else ""
+            elif origin == "ssi":
+                p = resolve_pdf_local_path("ssi", r, data_path=DATA)
+                body = _pdf_body(p, pdf_cache) if p else ""
+        pub_raw = r.get("pub_date") or r.get("date") or ""
+        records.append({
+            "unified_id": "",
+            "source": r.get("source") or origin,
+            "title": (r.get("title") or "").strip(),
+            "body": body,
+            "lead": (r.get("lead") or "").strip(),
+            "category": (r.get("category") or "").strip(),
+            "author": (r.get("author") or "").strip(),
+            "date": _norm_date(pub_raw),
+            "pub_datetime": pub_raw,
+            "url": url,
+            "pdf_url": r.get("pdf_url") or "",
+            "pdf_filename": r.get("pdf_filename") or "",
+            "collected_at": r.get("collected_at") or r.get("downloaded_at") or "",
+            "origin_file": "",
+        })
+    return records
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Aggregate news CSVs → unified + stats")
     ap.add_argument("--no-pdf", action="store_true", help="skip PDF body parsing (fast)")
@@ -113,38 +150,11 @@ def main() -> None:
         if args.limit:
             rows = rows[: args.limit]
         raw_counts[fn] = len(rows)
-        for r in rows:
-            url = r.get("url") or r.get("article_url") or r.get("pdf_url") or ""
-            if not url:
-                continue
-            # body resolution
-            body = (r.get("body") or "").strip()
-            if not body and not args.no_pdf:
-                if origin == "vietstock":
-                    p = resolve_pdf_local_path("vietstock", r, data_path=DATA)
-                    body = _pdf_body(p, pdf_cache) if p else ""
-                elif origin == "ssi":
-                    p = resolve_pdf_local_path("ssi", r, data_path=DATA)
-                    body = _pdf_body(p, pdf_cache) if p else ""
-            pub_raw = r.get("pub_date") or r.get("date") or ""
-            records.append({
-                "unified_id": "",
-                "source": r.get("source") or origin,
-                "title": (r.get("title") or "").strip(),
-                "body": body,
-                "lead": (r.get("lead") or "").strip(),
-                "category": (r.get("category") or "").strip(),
-                "author": (r.get("author") or "").strip(),
-                "date": _norm_date(pub_raw),
-                "pub_datetime": pub_raw,
-                "url": url,
-                "pdf_url": r.get("pdf_url") or "",
-                "pdf_filename": r.get("pdf_filename") or "",
-                "collected_at": r.get("collected_at") or r.get("downloaded_at") or "",
-                "origin_file": fn,
-            })
+        source_records = _process_source_rows(origin, rows, args.no_pdf, pdf_cache, args.limit)
+        for rec in source_records:
+            rec["origin_file"] = fn
+        records.extend(source_records)
 
-    # dedup by url (keep first), deterministic sort
     seen: set[str] = set()
     deduped: list[dict] = []
     for rec in records:

@@ -28,12 +28,12 @@ class SsiCrawler(BaseNewsCrawler):
         items = []
         for card in re.split(r"chart__content__item--undetail", html_text)[1:]:
             card = card[:3000]  # giới hạn trong 1 card
-            m_title = re.search(r'<a class="titlePost"[^>]*>(.*?)</a>', card, re.S)
+            m_title = re.search(r'<a class="titlePost"[^>]*>(.*?)</a>', card, re.S)  # noqa: S8786
             m_date = re.search(r"<span>(\d{2}/\d{2}/\d{4})</span>", card)
-            m_pdf = re.search(r'href="(https://[^"]*/analysis-center/report/download/[^"]+)"', card)
+            m_pdf = re.search(r'href="(https://[^"]*/analysis-center/report/download/[^"]+)"', card)  # noqa: S8786
             if not (m_date and m_pdf):
                 continue
-            m_lead = re.search(r'chart__content__item__desc__info">(.*?)</div>', card, re.S)
+            m_lead = re.search(r'chart__content__item__desc__info">(.*?)</div>', card, re.S)  # noqa: S8786
             lead = strip_html(m_lead.group(1))[:500] if m_lead else ""
             items.append({
                 "url": m_pdf.group(1),                       # id ổn định = link download

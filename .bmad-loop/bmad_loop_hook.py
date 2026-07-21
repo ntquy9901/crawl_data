@@ -27,7 +27,7 @@ def main() -> int:
     event_name = sys.argv[1] if len(sys.argv) > 1 else "Unknown"
     try:
         payload = json.load(sys.stdin)
-    except (json.JSONDecodeError, ValueError):
+    except ValueError:
         payload = {}
     if not isinstance(payload, dict):
         payload = {}

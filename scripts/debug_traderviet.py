@@ -34,7 +34,10 @@ for u in urls[:10]:
     print(f'  {u}')
 
 # Check for JSON-LD
-jsonld = re.findall(r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>', r.text, re.DOTALL)
+jsonld = re.findall(  # noqa: S8786
+    r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>',
+    r.text, re.DOTALL,
+)
 print(f'JSON-LD blocks: {len(jsonld)}')
 
 # Look for XenForo-specific markers

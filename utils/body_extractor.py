@@ -14,6 +14,8 @@ import fitz  # PyMuPDF
 from lxml import etree
 from lxml import html as lxml_html
 
+_MAIN_XPATH = '//main'
+
 # Per-source XPath for the article body container (discovered via spike).
 # cafef: div.detail-content is the scoped article text (excludes the 26k-char
 #        contentdetail wrapper that drags in related-news + comments).
@@ -23,12 +25,12 @@ SOURCE_XPATH: dict[str, list[str]] = {
     "cafef": ['//div[contains(@class,"detail-content")]'],
     "hsc": [
         '//main/section[contains(@class,"container")]',
-        '//main',
+        _MAIN_XPATH,
     ],
     "vndirect": [
         '//div[contains(@class,"content-single")]',
         '//div[contains(@class,"section-content")]',
-        '//main',
+        _MAIN_XPATH,
     ],
 }
 
@@ -39,7 +41,7 @@ FALLBACK_XPATH = [
     '//div[contains(@class,"post-content")]',
     '//div[contains(@class,"entry-content")]',
     '//div[@itemprop="articleBody"]',
-    '//main',
+    _MAIN_XPATH,
 ]
 
 # Short all-caps boilerplate lines to drop (site widgets prefixed to body text).

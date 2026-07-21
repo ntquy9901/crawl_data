@@ -50,7 +50,7 @@ def short_id(url: str) -> str:
     return hashlib.md5(url.encode("utf-8")).hexdigest()[:12]
 
 
-def parse_date(s) -> date:
+def parse_date(s) -> date | None:
     """Parse nhiều format ngày → date (hoặc None). Dùng cho range filter."""
     if not s:
         return None
@@ -100,17 +100,17 @@ class BaseNewsCrawler:
         """Trả list[dict], mỗi item có 'url' (+ tuỳ chọn title/pub_date/category)."""
         raise NotImplementedError
 
-    def parse_article(self, html_text: str, item: dict) -> dict:
+    def parse_article(self, html_text: str, _item: dict) -> dict:
         """Sau khi fetch trang bài → trả field bổ sung (lead, author, category, pdf_url...).
         Default: lấy og:description / meta description làm lead."""
         lead = ""
-        m = (re.search(r'<meta[^>]+property="og:description"[^>]*content="([^"]*)"', html_text)
-             or re.search(r'<meta[^>]+name="description"[^>]*content="([^"]*)"', html_text))
+        m = (re.search(r'<meta[^>]+property="og:description"[^>]*content="([^"]*)"', html_text)  # noqa: S8786
+             or re.search(r'<meta[^>]+name="description"[^>]*content="([^"]*)"', html_text))  # noqa: S8786
         if m:
             lead = html.unescape(m.group(1))[:500]
         return {"lead": lead}
 
-    def next_page(self, cur: int, html_text: str):
+    def next_page(self, cur: int, _html_text: str):
         """Trả page kế, hoặc None nếu hết trang. Default: cur+1 (override để detect last page)."""
         return cur + 1
 
@@ -194,8 +194,8 @@ class BaseNewsCrawler:
             "collected_at": now_iso(),
         }
 
-    def _process_items(self, items, start_date=None, end_date=None):
-        """Lọc range + dedup → fetch song song theo batch → save. Trả số kept."""
+    def _filter_todo(self, items, start_date, end_date):
+        """Filter items by date range and dedup. Returns list of items to process."""
         todo = []
         for it in items:
             u = it.get("url")
@@ -213,6 +213,33 @@ class BaseNewsCrawler:
                 self.counters["dup"] += 1
                 continue
             todo.append(it)
+        return todo
+
+    def _process_batch(self, ex, chunk, kept_batch):
+        """Process a single batch. Returns True if should stop."""
+        futs = {ex.submit(self._fetch_and_parse, it): it for it in chunk}
+        for fut in as_completed(futs):
+            it = futs[fut]
+            try:
+                rec = fut.result()
+            except Exception as e:  # noqa: BLE001
+                self.counters["fail"] += 1
+                self._audit(f"ERROR {it.get('url')} -> {e}")
+                continue
+            if not rec:
+                self.counters["fail"] += 1
+                continue
+            self.seen.add(self._dedup_key(rec["url"]))
+            kept_batch.append(rec)
+            self.counters["kept"] += 1
+            if self.max_articles and self.counters["kept"] >= self.max_articles:
+                self._stop = True
+                return True
+        return False
+
+    def _process_items(self, items, start_date=None, end_date=None):
+        """Lọc range + dedup → fetch song song theo batch → save. Trả số kept."""
+        todo = self._filter_todo(items, start_date, end_date)
 
         kept_batch = []
         with ThreadPoolExecutor(max_workers=self.workers) as ex:
@@ -220,24 +247,8 @@ class BaseNewsCrawler:
                 if self._stop:
                     break
                 chunk = todo[i:i + self.batch_size]
-                futs = {ex.submit(self._fetch_and_parse, it): it for it in chunk}
-                for fut in as_completed(futs):
-                    it = futs[fut]
-                    try:
-                        rec = fut.result()
-                    except Exception as e:  # noqa: BLE001
-                        self.counters["fail"] += 1
-                        self._audit(f"ERROR {it.get('url')} -> {e}")
-                        continue
-                    if not rec:
-                        self.counters["fail"] += 1
-                        continue
-                    self.seen.add(self._dedup_key(rec["url"]))
-                    kept_batch.append(rec)
-                    self.counters["kept"] += 1
-                    if self.max_articles and self.counters["kept"] >= self.max_articles:
-                        self._stop = True
-                        break
+                if self._process_batch(ex, chunk, kept_batch):
+                    break
                 if kept_batch:
                     self._append(kept_batch)
                     kept_batch = []
@@ -275,6 +286,17 @@ class BaseNewsCrawler:
         self._summarize(t0)
         return self.counters
 
+    def _should_stop_at_page(self, items, page, start_date):
+        """Check if all items on page are before start_date. Returns True if should stop."""
+        if not start_date:
+            return False
+        dates = [parse_date(it.get("pub_date")) for it in items]
+        parsed = [d for d in dates if d]
+        if parsed and len(parsed) == len(items) and all(d < start_date for d in parsed):
+            self._audit(f"page {page} all before start {start_date} -> stop")
+            return True
+        return False
+
     def crawl_range(self, start_date=None, end_date=None, max_pages=0):
         """Paginate listing (newest→oldest), lọc theo [start,end].
         Dừng khi qua start hoặc hết trang."""
@@ -297,13 +319,8 @@ class BaseNewsCrawler:
             if not items:
                 break
             self._process_items(items, start_date, end_date)
-            # dừng nếu cả page đều cũ hơn start_date (đã qua khoảng cần lấy)
-            if start_date:
-                dates = [parse_date(it.get("pub_date")) for it in items]
-                parsed = [d for d in dates if d]
-                if parsed and len(parsed) == len(items) and all(d < start_date for d in parsed):
-                    self._audit(f"page {page} all before start {start_date} -> stop")
-                    break
+            if self._should_stop_at_page(items, page, start_date):
+                break
             nxt = self.next_page(page, h)
             if nxt is None or nxt <= page:
                 self._audit(f"last page reached at {page}")

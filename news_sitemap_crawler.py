@@ -50,27 +50,27 @@ def clean_title(raw: str) -> str:
 
 
 SOURCES = {
-    "tuoitre": dict(
-        index_url="https://tuoitre.vn/sitemaps/index.rss",
-        shard_re=re.compile(
+    "tuoitre": {
+        "index_url": "https://tuoitre.vn/sitemaps/index.rss",
+        "shard_re": re.compile(
             r"<loc>(https://tuoitre\.vn/StaticSitemaps/sitemaps-(\d{4})-(\d{1,2})-\d+-\d+\.xml)</loc>"),
-        article_suffix=".htm",
-        floor=date(2011, 1, 1),
-    ),
-    "thanhnien": dict(
-        index_url="https://thanhnien.vn/sitemap.xml",
-        shard_re=re.compile(
+        "article_suffix": ".htm",
+        "floor": date(2011, 1, 1),
+    },
+    "thanhnien": {
+        "index_url": "https://thanhnien.vn/sitemap.xml",
+        "shard_re": re.compile(
             r"<loc>(https://thanhnien\.vn/sitemaps/sitemaps-(\d{4})-(\d{1,2})-\d+-\d+\.xml)</loc>"),
-        article_suffix=".htm",
-        floor=date(2011, 6, 1),
-    ),
-    "vietnamplus": dict(
-        index_url="https://www.vietnamplus.vn/sitemap.xml",
-        shard_re=re.compile(
+        "article_suffix": ".htm",
+        "floor": date(2011, 6, 1),
+    },
+    "vietnamplus": {
+        "index_url": "https://www.vietnamplus.vn/sitemap.xml",
+        "shard_re": re.compile(
             r"<loc>(https://www\.vietnamplus\.vn/sitemaps/news-(\d{4})-(\d{1,2})\.xml)</loc>"),
-        article_suffix=".vnp",
-        floor=date(2010, 1, 1),
-    ),
+        "article_suffix": ".vnp",
+        "floor": date(2010, 1, 1),
+    },
 }
 
 URL_BLOCK_RE = re.compile(r"<url>(.*?)</url>", re.S)
@@ -138,13 +138,33 @@ class SitemapNewsCrawler(BaseNewsCrawler):
             "collected_at": now_iso(),
         }
 
+    def _process_shard_items(
+        self, items: list[dict], from_date, end_date, max_articles
+    ) -> tuple[bool, list[dict]]:
+        """Process items from a single shard. Returns (should_stop, records_to_keep)."""
+        stop = False
+        records = []
+        for it in items:
+            d = parse_date(it.get("pub_date"))
+            if d and (d < from_date or d > end_date):
+                self.counters["out_of_range"] += 1
+                continue
+            if it["url"] in self.seen:
+                self.counters["dup"] += 1
+                continue
+            self.seen.add(it["url"])
+            records.append(self._record(it))
+            self.counters["kept"] += 1
+            if max_articles and self.counters["kept"] >= max_articles:
+                stop = True
+                break
+        return stop, records
+
     def crawl_backfill(self, from_date: date | None = None, end_date: date | None = None,
                         max_articles: int = 0, test: bool = False) -> dict:
         from_date = from_date or self.cfg["floor"]
         end_date = end_date or datetime.now(HN_TZ).date()
         if test:
-            # giới hạn cửa sổ quét ngay từ đầu — tránh regex-scan index cho toàn bộ
-            # lịch sử (có thể 15 năm) chỉ để lấy 2 shard gần nhất
             from_date = max(from_date, end_date - timedelta(days=30))
         print(f"=== {self.source.upper()} BACKFILL {from_date} -> {end_date} "
               f"| workers={self.workers} ===")
@@ -171,20 +191,10 @@ class SitemapNewsCrawler(BaseNewsCrawler):
                     self.counters["fail_shard"] += 1
                     continue
                 items = parse_shard(xml_text, self.cfg["article_suffix"])
-                for it in items:
-                    d = parse_date(it.get("pub_date"))
-                    if d and (d < from_date or d > end_date):
-                        self.counters["out_of_range"] += 1
-                        continue
-                    if it["url"] in self.seen:
-                        self.counters["dup"] += 1
-                        continue
-                    self.seen.add(it["url"])
-                    kept_batch.append(self._record(it))
-                    self.counters["kept"] += 1
-                    if max_articles and self.counters["kept"] >= max_articles:
-                        stop = True
-                        break
+                stop, new_records = self._process_shard_items(
+                    items, from_date, end_date, max_articles
+                )
+                kept_batch.extend(new_records)
                 if len(kept_batch) >= 500:
                     self._append(kept_batch)
                     kept_batch = []

@@ -27,6 +27,7 @@ from base_news_crawler import (
 )
 
 HN_TZ = timezone(timedelta(hours=7))
+_THREAD_MARKER = "structItem structItem--thread"
 
 # ── Source definitions ───────────────────────────────────────────────────
 FORUM_SOURCES = {
@@ -108,9 +109,9 @@ class ForumCrawler(BaseNewsCrawler):
             return items
 
         # Split by structItem--thread markers
-        count = html_text.count('structItem structItem--thread')
+        count = html_text.count(_THREAD_MARKER)
         self._audit(f"parse_listing page {page}: structItem markers={count}")
-        parts = html_text.split('structItem structItem--thread')
+        parts = html_text.split(_THREAD_MARKER)
 
         for idx, part in enumerate(parts[1:], 1):
             try:
@@ -133,14 +134,14 @@ class ForumCrawler(BaseNewsCrawler):
         view_count = 0
 
         # Thread URL: XenForo 2 uses /t/<slug>.<id>/ pattern
-        m = re.search(r'href="(/t/[^"]+)"[^>]*>(.*?)</a>', block, re.DOTALL)
+        m = re.search(r'href="(/t/[^"]+)"[^>]*>(.*?)</a>', block, re.DOTALL)  # noqa: S8786
         if m:
             url = m.group(1)
             title = strip_html(m.group(2))
 
         # Fallback: look for any <a> with thread-like href
         if not url:
-            m = re.search(r'href="(/[^"]*(?:thread|posts)/[^"]*)"[^>]*>(.*?)</a>', block, re.DOTALL)
+            m = re.search(r'href="(/[^"]*(?:thread|posts)/[^"]*)"[^>]*>(.*?)</a>', block, re.DOTALL)  # noqa: S8786
             if m:
                 url = m.group(1)
                 title = strip_html(m.group(2))
@@ -153,14 +154,17 @@ class ForumCrawler(BaseNewsCrawler):
         if m:
             author = m.group(1)
         else:
-            m = re.search(r'<a[^>]*class="username[^"]*"[^>]*>((?:(?!</a>).)*)</a>', block, re.DOTALL)
+            m = re.search(  # noqa: S8786
+                r'<a[^>]*class="username[^"]*"[^>]*>((?:(?!</a>).)*)</a>',
+                block, re.DOTALL
+            )
             if m:
                 author = strip_html(m.group(1))
 
         # Date from <time datetime="..."> attribute (ISO format)
         m = re.search(r'<time[^>]*datetime="([^"]+)"', block)
         if m:
-            pub_date = m.group(1)[:19]  # ISO format (strip timezone)
+            pub_date = m.group(1)[:19]
 
         # Reply count from pairs--justified
         m = re.search(r'<dt>\s*Trả lời\s*</dt>\s*<dd[^>]*>\s*([\d,]+)\s*</dd>', block)
@@ -189,16 +193,12 @@ class ForumCrawler(BaseNewsCrawler):
             }
         return None
 
-    def parse_article(self, html_text: str, item: dict) -> dict:
-        """Parse full thread page → lead, body, author, date."""
-        lead = ""
-        body = ""
-        author = item.get("author", "")
-        pub_date = item.get("pub_date", "")
-
-        # JSON-LD (voz.vn has rich schema.org/DiscussionForumPosting)
+    def _extract_jsonld_metadata(
+        self, html_text: str, lead: str, pub_date: str, author: str
+    ) -> tuple[str, str, str]:
+        """Extract lead, pub_date, author from JSON-LD blocks. Returns (lead, pub_date, author)."""
         jsonld_blocks = re.findall(
-            r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>',
+            r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>',  # noqa: S8786
             html_text, re.DOTALL | re.IGNORECASE
         )
         for block in jsonld_blocks:
@@ -208,9 +208,8 @@ class ForumCrawler(BaseNewsCrawler):
                     if data.get("@type") in ("DiscussionForumPosting", "Article"):
                         if data.get("headline"):
                             lead = strip_html(data["headline"])[:500]
-                        if data.get("description"):
-                            if not lead:
-                                lead = strip_html(data["description"])[:500]
+                        if not lead and data.get("description"):
+                            lead = strip_html(data["description"])[:500]
                         if data.get("datePublished") and not pub_date:
                             pub_date = data["datePublished"][:19]
                         if data.get("author"):
@@ -226,49 +225,54 @@ class ForumCrawler(BaseNewsCrawler):
                                 pub_date = entry["datePublished"][:19]
             except json.JSONDecodeError:
                 continue
+        return lead, pub_date, author
 
-        # Try to get body from first post
-        body_parts = []
-
-        # XenForo 2: <article class="message-body"> or <div class="message-content">
+    def _extract_body_from_html(self, html_text: str) -> str:
+        """Extract article body from HTML using multiple selector strategies."""
         m = re.search(
-            r'<article[^>]*class="message[^"]*"[^>]*>(.*?)</article>',
+            r'<article[^>]*class="message[^"]*"[^>]*>(.*?)</article>',  # noqa: S8786
             html_text, re.DOTALL
         )
         if not m:
             m = re.search(
-                r'<div[^>]*class="message-content[^"]*"[^>]*>(.*?)</div>',
+                r'<div[^>]*class="message-content[^"]*"[^>]*>(.*?)</div>',  # noqa: S8786
                 html_text, re.DOTALL
             )
         if not m:
             m = re.search(
-                r'<div[^>]*class="bbWrapper[^"]*"[^>]*>(.*?)</div>',
+                r'<div[^>]*class="bbWrapper[^"]*"[^>]*>(.*?)</div>',  # noqa: S8786
                 html_text, re.DOTALL
             )
+        return strip_html(m.group(1))[:10000] if m else ""
 
-        if m:
-            body = strip_html(m.group(1))[:10000]
-        else:
-            # Fallback: get meta description
+    def parse_article(self, html_text: str, item: dict) -> dict | None:
+        """Parse full thread page → lead, body, author, date."""
+        lead = ""
+        body = ""
+        author = item.get("author", "")
+        pub_date = item.get("pub_date", "")
+
+        lead, pub_date, author = self._extract_jsonld_metadata(html_text, lead, pub_date, author)
+
+        body = self._extract_body_from_html(html_text)
+        if not body:
             lead_m = re.search(
-                r'<meta[^>]+name="description"[^>]*content="([^"]*)"',
+                r'<meta[^>]+name="description"[^>]*content="([^"]*)"',  # noqa: S8786
                 html_text
             )
             if lead_m:
                 lead = lead_m.group(1)[:500]
 
-        # Extract author from message if not already got
         if not author:
             m = re.search(
-                r'<a[^>]*class="username[^"]*"[^>]*>((?:(?!</a>).)*)</a>',
+                r'<a[^>]*class="username[^"]*"[^>]*>((?:(?!</a>).)*)</a>',  # noqa: S8786
                 html_text, re.DOTALL
             )
             if m:
                 author = strip_html(m.group(1))
 
-        # Get thread title from <h1>
         if not item.get("title"):
-            m = re.search(r'<h1[^>]*>((?:(?!</h1>).)*)</h1>', html_text, re.DOTALL)
+            m = re.search(r'<h1[^>]*>((?:(?!</h1>).)*)</h1>', html_text, re.DOTALL)  # noqa: S8786
             if m:
                 item["title"] = strip_html(m.group(1))
 
@@ -280,25 +284,27 @@ class ForumCrawler(BaseNewsCrawler):
             "pub_date": pub_date,
         }
 
-    def next_page(self, cur: int, html_text: str):
+    def next_page(self, cur: int, html_text: str) -> int | None:
         """Detect next page link."""
         m = re.search(
-            r'<a[^>]*class="pageNav-jump--next[^"]*"[^>]*href="([^"]*page-(\d+))"',
+            r'<a[^>]*class="pageNav-jump--next[^"]*"[^>]*href="([^"]*page-(\d+))"',  # noqa: S8786
             html_text
         )
         if m:
             return int(m.group(2))
         # Try generic next link
         m = re.search(
-            r'<a[^>]*class="[^"]*next[^"]*"[^>]*href="[^"]*page-(\d+)"',
+            r'<a[^>]*class="[^"]*next[^"]*"[^>]*href="[^"]*page-(\d+)"',  # noqa: S8786
             html_text
         )
         if m:
             return int(m.group(1))
         # Check if current page < total pages
-        m = re.search(r'<a[^>]*class="pageNav-page[^"]*"[^>]*href="[^"]*page-(\d+)"', html_text)
         max_page = 0
-        for m in re.finditer(r'<a[^>]*class="pageNav-page[^"]*"[^>]*href="[^"]*page-(\d+)"', html_text):
+        for m in re.finditer(  # noqa: S8786
+            r'<a[^>]*class="pageNav-page[^"]*"[^>]*href="[^"]*page-(\d+)"',
+            html_text,
+        ):
             p = int(m.group(1))
             if p > max_page:
                 max_page = p
@@ -348,7 +354,7 @@ class VozForumCrawler(ForumCrawler):
 
     def parse_listing(self, html_text: str, page: int) -> list:
         items = []
-        parts = html_text.split('structItem structItem--thread')
+        parts = html_text.split(_THREAD_MARKER)
         seen_urls = set()
         for part in parts[1:]:
             try:

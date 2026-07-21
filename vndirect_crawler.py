@@ -108,11 +108,30 @@ class VndirectCrawler(BaseNewsCrawler):
         finally:
             self._close()
 
-    def fetch_bodies(self, test: bool = False, limit: int = 0) -> None:
-        """Re-fetch body cho các row body rỗng qua Playwright (Cloudflare). Ghi in-place.
+    def _fetch_single_body(self, row: dict) -> bool:
+        """Fetch body for a single row via Playwright. Returns True if body obtained."""
+        url = row.get("url") or ""
+        if not url:
+            return False
+        try:
+            self._page.goto(url, timeout=60000, wait_until="domcontentloaded")
+            try:
+                self._page.wait_for_load_state("networkidle", timeout=20000)
+            except Exception:  # noqa: BLE001
+                pass
+            for _ in range(10):
+                t = self._page.title()
+                if "just a moment" not in t.lower() and "attention" not in t.lower():
+                    break
+                self._page.wait_for_timeout(3000)
+            row["body"] = extract_html_body(self._page.content(), "vndirect")
+            return bool(row["body"])
+        except Exception as e:  # noqa: BLE001
+            self._audit(f"BODY FAIL {url} -> {e}")
+            return False
 
-        Sequential (workers=1, 1 browser). Chậm ~5-10s/bài (page load + Cloudflare).
-        Toàn bộ 967 bài ~1.5-2h → chạy `--max-articles` chunk hoặc để qua đêm."""
+    def fetch_bodies(self, test: bool = False, limit: int = 0) -> None:
+        """Re-fetch body cho các row body rỗng qua Playwright (Cloudflare). Ghi in-place."""
         import csv as _csv
         with open(self.csv_file, encoding="utf-8-sig", newline="") as f:
             rows = list(_csv.DictReader(f))
@@ -133,26 +152,9 @@ class VndirectCrawler(BaseNewsCrawler):
         done = fail = 0
         try:
             for i, row in enumerate(todo, 1):
-                url = row.get("url") or ""
-                if not url:
-                    fail += 1
-                    continue
-                try:
-                    self._page.goto(url, timeout=60000, wait_until="domcontentloaded")
-                    try:
-                        self._page.wait_for_load_state("networkidle", timeout=20000)
-                    except Exception:  # noqa: BLE001
-                        pass
-                    for _ in range(10):  # chờ Cloudflare "Just a moment"
-                        t = self._page.title()
-                        if "just a moment" not in t.lower() and "attention" not in t.lower():
-                            break
-                        self._page.wait_for_timeout(3000)
-                    row["body"] = extract_html_body(self._page.content(), "vndirect")
-                    done += 1 if row["body"] else 0
-                    fail += 0 if row["body"] else 1
-                except Exception as e:  # noqa: BLE001
-                    self._audit(f"BODY FAIL {url} -> {e}")
+                if self._fetch_single_body(row):
+                    done += 1
+                else:
                     fail += 1
                 if i % 20 == 0 or i == len(todo):
                     print(f"  {i}/{len(todo)} body={done} fail={fail}")

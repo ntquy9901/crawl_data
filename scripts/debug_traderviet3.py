@@ -19,22 +19,22 @@ else:
 
 # Find structItem blocks with thread info
 blocks = re.findall(
-    r'<div class="structItem structItem--thread[^"]*"[^>]*>(.*?)</div>\s*</div>',
+    r'<div class="structItem structItem--thread[^"]*"[^>]*>(.*?)</div>\s*</div>',  # noqa: S8786
     html, re.DOTALL
 )
 print(f'structItem blocks: {len(blocks)}')
 
 if len(blocks) == 0:
     blocks = re.findall(
-        r'<div class="structItem[^"]*"[^>]*>(.*?)(?=<div class="structItem)',
+        r'<div class="structItem[^"]*"[^>]*>(.*?)(?=<div class="structItem)',  # noqa: S8786
         html, re.DOTALL
     )
     print(f'structItem blocks (alt): {len(blocks)}')
 
 if len(blocks) == 0:
-    blocks = re.findall(
+    blocks = re.findall(  # noqa: S8786
         r'(structItem structItem--thread.*?)(?=structItem structItem--thread|</div>\s*</div>\s*</div>)',
-        html, re.DOTALL
+        html, re.DOTALL,
     )
     print(f'structItem blocks (alt2): {len(blocks)}')
 

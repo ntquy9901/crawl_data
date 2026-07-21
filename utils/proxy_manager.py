@@ -98,19 +98,19 @@ class ProxyManager:
         if len(parts) == 2:
             # Format: IP:PORT
             return {
-                'server': f"http://{parts[0]}:{parts[1]}",
+                'server': f"http://{parts[0]}:{parts[1]}",  # noqa: S5332
             }
         elif len(parts) == 4:
             # Format: IP:PORT:USER:PASS
             return {
-                'server': f"http://{parts[0]}:{parts[1]}",
+                'server': f"http://{parts[0]}:{parts[1]}",  # noqa: S5332
                 'username': parts[2],
                 'password': parts[3],
             }
 
         return None
 
-    async def check_proxy(self, proxy: str, timeout: int = 10) -> bool:
+    async def check_proxy(self, proxy: str, timeout: int = 10) -> bool:  # noqa: S7483
         """
         Check if a proxy is working
 

@@ -47,7 +47,7 @@ def get_random_user_agent() -> str:
             return ua.random
         except Exception:
             pass
-    return random.choice(DEFAULT_USER_AGENTS)
+    return random.choice(DEFAULT_USER_AGENTS)  # noqa: S2245
 
 
 async def human_like_scroll(page: Page, max_scrolls: int = 3) -> None:
@@ -58,11 +58,11 @@ async def human_like_scroll(page: Page, max_scrolls: int = 3) -> None:
         page: Playwright page object
         max_scrolls: Maximum number of scroll actions
     """
-    scroll_count = random.randint(1, max_scrolls)
+    scroll_count = random.randint(1, max_scrolls)  # noqa: S2245
 
     for _ in range(scroll_count):
         # Random scroll distance
-        scroll_distance = random.randint(100, 500)
+        scroll_distance = random.randint(100, 500)  # noqa: S2245
         await page.evaluate(f"window.scrollBy(0, {scroll_distance})")
 
         # Random delay between scrolls
@@ -80,9 +80,9 @@ async def human_like_mouse_move(page: Page) -> None:
         viewport = page.viewport_size
         if viewport:
             # Move mouse to random positions
-            for _ in range(random.randint(2, 5)):
-                x = random.randint(50, viewport['width'] - 50)
-                y = random.randint(50, viewport['height'] - 50)
+            for _ in range(random.randint(2, 5)):  # noqa: S2245
+                x = random.randint(50, viewport['width'] - 50)  # noqa: S2245
+                y = random.randint(50, viewport['height'] - 50)  # noqa: S2245
                 await page.mouse.move(x, y)
                 await asyncio.sleep(random.uniform(0.1, 0.5))
     except Exception:
@@ -169,7 +169,7 @@ async def safe_goto(page: Page, url: str, max_retries: int = 3) -> bool:
     return False
 
 
-async def safe_click(page: Page, selector: str, timeout: int = 10000) -> bool:
+async def safe_click(page: Page, selector: str, timeout: int = 10000) -> bool:  # noqa: S7483
     """
     Safely click an element with retry logic
 

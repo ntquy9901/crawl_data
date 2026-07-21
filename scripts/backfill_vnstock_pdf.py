@@ -109,6 +109,44 @@ def run_playwright_fallback(fail_rows: list[dict]) -> list[dict]:
     return recovered
 
 
+def _reconcile_existing_pdfs(rows: list[dict]) -> int:
+    """Reconcile rows with existing on-disk PDFs from prior runs. Returns count reconciled."""
+    reconciled = 0
+    for r in rows:
+        if (r.get("pdf_filename") or "").strip() or not (r.get("pdf_url") or "").strip():
+            continue
+        old = PDF_DIR / generate_pdf_filename(r.get("title", ""), r.get("date", ""))
+        if old.exists() and old.stat().st_size > 1000:
+            r["pdf_filename"] = old.name
+            reconciled += 1
+    return reconciled
+
+
+def _download_phase_a(todo: list[dict], workers: int) -> tuple[int, list[dict]]:
+    """Phase A: parallel requests download. Returns (done_count, fail_rows)."""
+    done = 0
+    t0 = time.time()
+    fail_rows: list[dict] = []
+
+    def one(r: dict):
+        return r, download_requests((r.get("pdf_url") or "").strip(), dest_for(r))
+
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {ex.submit(one, r): r for r in todo}
+        for i, fut in enumerate(as_completed(futs), 1):
+            r, ok = fut.result()
+            if ok:
+                r["pdf_filename"] = dest_for(r).name
+                r["downloaded_at"] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+                done += 1
+            else:
+                fail_rows.append(r)
+            if i % 100 == 0 or i == len(todo):
+                print(f"  phase A {i}/{len(todo)} done={done} fail={len(fail_rows)} "
+                      f"[{time.time()-t0:.0f}s]")
+    return done, fail_rows
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Vietstock PDF backfill (download-missing)")
     ap.add_argument("--limit", type=int, default=0, help="cap rows (0=all)")
@@ -132,20 +170,10 @@ def main() -> None:
         if col not in fieldnames:
             fieldnames.append(col)
 
-    # Reconcile: recover PDFs saved by a prior (possibly crashed) run under the
-    # OLD naming (no doc_id) whose pdf_filename was never written to the CSV.
-    reconciled = 0
-    for r in rows:
-        if (r.get("pdf_filename") or "").strip() or not (r.get("pdf_url") or "").strip():
-            continue
-        old = PDF_DIR / generate_pdf_filename(r.get("title", ""), r.get("date", ""))
-        if old.exists() and old.stat().st_size > 1000:
-            r["pdf_filename"] = old.name
-            reconciled += 1
+    reconciled = _reconcile_existing_pdfs(rows)
     if reconciled:
         print(f"reconciled {reconciled} rows to existing on-disk PDFs (prior run)")
 
-    # RULE — skip already-downloaded: only rows with pdf_url and no local file
     todo = [r for r in rows if (r.get("pdf_url") or "").strip() and not has_local(r)]
     if args.limit:
         todo = todo[: args.limit]
@@ -155,29 +183,8 @@ def main() -> None:
         print("nothing to do — all rows with pdf_url already have a local PDF")
         return
 
-    # Phase A: parallel requests
-    done = 0
-    t0 = time.time()
-    fail_rows: list[dict] = []
+    done, fail_rows = _download_phase_a(todo, args.workers)
 
-    def one(r: dict):
-        return r, download_requests((r.get("pdf_url") or "").strip(), dest_for(r))
-
-    with ThreadPoolExecutor(max_workers=args.workers) as ex:
-        futs = {ex.submit(one, r): r for r in todo}
-        for i, fut in enumerate(as_completed(futs), 1):
-            r, ok = fut.result()
-            if ok:
-                r["pdf_filename"] = dest_for(r).name
-                r["downloaded_at"] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-                done += 1
-            else:
-                fail_rows.append(r)
-            if i % 100 == 0 or i == len(todo):
-                print(f"  phase A {i}/{len(todo)} done={done} fail={len(fail_rows)} "
-                      f"[{time.time()-t0:.0f}s]")
-
-    # Phase B: Playwright fallback (one browser)
     if fail_rows and not args.no_playwright:
         print(f"phase B: Playwright fallback for {len(fail_rows)} failures (sequential)")
         recovered = run_playwright_fallback(fail_rows)
@@ -197,7 +204,7 @@ def main() -> None:
         w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
-    tmp.replace(csv_path)  # atomic rename → crash won't corrupt the CSV
+    tmp.replace(csv_path)
     print(f"-> {csv_path}: downloaded {done}/{len(todo)} "
           f"(fail={len(still_fail)}"
           f"{f', logged -> {FAIL_LOG.name}' if still_fail else ''})")

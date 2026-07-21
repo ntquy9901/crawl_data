@@ -49,14 +49,14 @@ ARTICLE_RE = re.compile(
 )
 
 TARGETS = {
-    "homepage": dict(
-        original_url="http://vnexpress.net/",
-        cadence=6,  # collapse=timestamp:6 -> 1 snapshot/tháng
-    ),
-    "kinh-doanh": dict(
-        original_url="https://vnexpress.net/kinh-doanh",
-        cadence=8,  # collapse=timestamp:8 -> 1 snapshot/ngày
-    ),
+    "homepage": {
+        "original_url": "http://vnexpress.net/",  # noqa: S5332
+        "cadence": 6,  # collapse=timestamp:6 -> 1 snapshot/tháng
+    },
+    "kinh-doanh": {
+        "original_url": "https://vnexpress.net/kinh-doanh",
+        "cadence": 8,  # collapse=timestamp:8 -> 1 snapshot/ngày
+    },
 }
 
 
@@ -118,6 +118,18 @@ class VnexpressWaybackBackfill(BaseNewsCrawler):
             "collected_at": now_iso(),
         }
 
+    def _process_snapshot(self, html_text: str, snapshot_date: str, kept_batch: list):
+        """Process a single snapshot's HTML. Returns list of new records."""
+        new_records = []
+        for url, title in extract_articles(html_text).items():
+            if url in self.seen:
+                self.counters["dup"] += 1
+                continue
+            self.seen.add(url)
+            new_records.append(self._record(url, title, snapshot_date))
+            self.counters["kept"] += 1
+        return new_records
+
     def run(self, test: bool = False) -> dict:
         print(f"=== VNEXPRESS WAYBACK BACKFILL target={self.target} | workers={self.workers} ===")
         snapshots = self.list_snapshots()
@@ -142,13 +154,8 @@ class VnexpressWaybackBackfill(BaseNewsCrawler):
                     self.counters["fail_snapshot"] += 1
                     continue
                 snapshot_date = f"{ts[0:4]}-{ts[4:6]}-{ts[6:8]}"
-                for url, title in extract_articles(html_text).items():
-                    if url in self.seen:
-                        self.counters["dup"] += 1
-                        continue
-                    self.seen.add(url)
-                    kept_batch.append(self._record(url, title, snapshot_date))
-                    self.counters["kept"] += 1
+                new_records = self._process_snapshot(html_text, snapshot_date, kept_batch)
+                kept_batch.extend(new_records)
                 if len(kept_batch) >= 500:
                     self._append(kept_batch)
                     kept_batch = []

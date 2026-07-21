@@ -82,10 +82,9 @@ def _row_stats(rows: list[dict], date_field: str) -> tuple[int, int | None, int 
     return len(rows), (min(yrs) if yrs else None), (max(yrs) if yrs else None)
 
 
-def build_index(data_dir: Path = DATA, out: Path = INDEX_OUT, dry_run: bool = False) -> list[dict]:
-    entries: list[dict] = []
-
-    # vnstock analysis reports → subjective_expert (toàn bộ)
+def _index_vnstock(data_dir: Path) -> list[dict]:
+    """Build index entry for vnstock analysis reports."""
+    entries = []
     p = data_dir / "vnstock_articles.csv"
     if p.exists():
         rows = _read_csv(p)
@@ -93,8 +92,12 @@ def build_index(data_dir: Path = DATA, out: Path = INDEX_OUT, dry_run: bool = Fa
         entries.append({"dataset": "vnstock_articles", "source": "(broker research PDFs)",
                         "data_type": SUBJECTIVE_EXPERT, "rows": n,
                         "year_min": lo or "", "year_max": hi or ""})
+    return entries
 
-    # news per-source → classify theo source
+
+def _index_news(data_dir: Path) -> list[dict]:
+    """Build index entries for news articles by source."""
+    entries = []
     p = data_dir / "news_articles.csv"
     if p.exists():
         rows = _read_csv(p)
@@ -109,9 +112,12 @@ def build_index(data_dir: Path = DATA, out: Path = INDEX_OUT, dry_run: bool = Fa
             entries.append({"dataset": "news_articles", "source": src,
                             "data_type": classify(src), "rows": n,
                             "year_min": lo or "", "year_max": hi or ""})
+    return entries
 
-    # objective layer (VSDC/Vietstock disclosure/Tier-2 RSS) — objective by definition
-    obj_dir = PROJECT_ROOT / "objective"
+
+def _index_objective(obj_dir: Path) -> list[dict]:
+    """Build index entries for objective layer CSVs."""
+    entries = []
     for csv_p in sorted(obj_dir.rglob("*.csv")) if obj_dir.exists() else []:
         if csv_p.stat().st_size == 0:
             continue
@@ -121,14 +127,17 @@ def build_index(data_dir: Path = DATA, out: Path = INDEX_OUT, dry_run: bool = Fa
             continue
         if not rows:
             continue
-        # ước lượng date field
         df = next((c for c in ("publish_time", "pub_date", "date") if c in rows[0]), None)
         n, lo, hi = _row_stats(rows, df or "")
         entries.append({"dataset": f"objective/{csv_p.parent.name}/{csv_p.name}",
                         "source": csv_p.stem, "data_type": "objective", "rows": n,
                         "year_min": lo or "", "year_max": hi or ""})
+    return entries
 
-    # macro (DXY/VNINDEX/USD-VND) → objective
+
+def _index_macro(data_dir: Path) -> list[dict]:
+    """Build index entries for macro data."""
+    entries = []
     macro = data_dir / "macro"
     if macro.exists():
         for csv_p in sorted(macro.rglob("*.csv")):
@@ -141,8 +150,16 @@ def build_index(data_dir: Path = DATA, out: Path = INDEX_OUT, dry_run: bool = Fa
             entries.append({"dataset": f"macro/{csv_p.name}", "source": csv_p.stem,
                             "data_type": "objective", "rows": len(rows),
                             "year_min": "", "year_max": ""})
+    return entries
 
-    # telegram (subjective crowd) — nếu đã crawl
+
+def build_index(data_dir: Path = DATA, out: Path = INDEX_OUT, dry_run: bool = False) -> list[dict]:
+    entries: list[dict] = []
+    entries.extend(_index_vnstock(data_dir))
+    entries.extend(_index_news(data_dir))
+    entries.extend(_index_objective(PROJECT_ROOT / "objective"))
+    entries.extend(_index_macro(data_dir))
+
     p = data_dir / "telegram_articles.csv"
     if p.exists():
         rows = _read_csv(p)
@@ -157,7 +174,7 @@ def build_index(data_dir: Path = DATA, out: Path = INDEX_OUT, dry_run: bool = Fa
     else:
         with open(out, "w", encoding="utf-8-sig", newline="") as f:
             w = csv.DictWriter(f, fieldnames=["dataset", "source", "data_type",
-                                              "rows", "year_min", "year_max"])
+                                               "rows", "year_min", "year_max"])
             w.writeheader()
             w.writerows(entries)
         print(f"-> index {out}: {len(entries)} nhóm dữ liệu")

@@ -38,7 +38,7 @@ DATA_SOURCES = [
         "crawl_method": "Playwright browser (stealth) + pagination + PDF download",
         "schema_family": "vietstock",
         "columns": "id, title, source, date, pdf_url, pdf_filename, downloaded_at",
-        "file_pattern": "vnstock_articles.csv",
+        "file_pattern": "vnstock_articles.csv",  # noqa: S1192
         "owner": "Vietstock",
         "notes": "Canonical dataset (14.8k reports). PDF download for recent years only."
     },
@@ -64,7 +64,7 @@ DATA_SOURCES = [
         "crawl_method": "HTTP requests (RSS daily + sitemap backfill)",
         "schema_family": "cafef",
         "columns": "id, title, section, pub_date, article_url, author, lead, collected_at, body",
-        "file_pattern": "cafef_articles.csv",
+        "file_pattern": "cafef_articles.csv",  # noqa: S1192
         "owner": "Cafef (FPT Online)",
         "notes": "~39k rows nhưng chỉ ~4k có date. Deep backfill bị throttle. Schema khác biệt."
     },
@@ -76,7 +76,7 @@ DATA_SOURCES = [
         "description": "Báo cáo phân tích từ SSI Securities (PDF bulletins, listing-complete)",
         "crawl_method": "HTTP requests + pagination",
         "schema_family": "news",
-        "columns": "id, source, title, category, pub_date, url, author, lead, pdf_url, pdf_filename, collected_at, body",
+        "columns": "id, source, title, category, pub_date, url, author, lead, pdf_url, pdf_filename, collected_at, body",  # noqa: S1192
         "file_pattern": "ssi_articles.csv",
         "owner": "SSI Securities",
         "notes": "1.9k reports, 2019-2025, listing complete (~217 trang)."
@@ -89,7 +89,7 @@ DATA_SOURCES = [
         "description": "Research insights từ HSC Securities (daily-only, không pub_date)",
         "crawl_method": "HTTP requests (daily-only listing, không backfill)",
         "schema_family": "news",
-        "columns": "id, source, title, category, pub_date, url, author, lead, pdf_url, pdf_filename, collected_at, body",
+        "columns": "id, source, title, category, pub_date, url, author, lead, pdf_url, pdf_filename, collected_at, body",  # noqa: S1192
         "file_pattern": "hsc_articles.csv",
         "owner": "HSC Securities",
         "notes": "~40 records. pub_date toàn NaN (HSC không expose). Daily-only."
@@ -102,7 +102,7 @@ DATA_SOURCES = [
         "description": "Research notes từ VNDIRECT Securities (4 category, bilingual en/vi)",
         "crawl_method": "Playwright stealth (vượt Cloudflare) + category pagination",
         "schema_family": "news",
-        "columns": "id, source, title, category, pub_date, url, author, lead, pdf_url, pdf_filename, collected_at, body",
+        "columns": "id, source, title, category, pub_date, url, author, lead, pdf_url, pdf_filename, collected_at, body",  # noqa: S1192
         "file_pattern": "vndirect_articles.csv",
         "owner": "VNDIRECT Securities",
         "notes": "2k records (EN + VI), 2016-2022, 4 categories."
@@ -113,9 +113,9 @@ DATA_SOURCES = [
         "type": "mass_media",
         "url": "https://tuoitre.vn",
         "description": "Tin tức phổ thông từ tuoitre.vn (metadata-only, sitemap crawl)",
-        "crawl_method": "Sitemap shard crawl (metadata-only, title embedded in sitemap)",
+        "crawl_method": "Sitemap shard crawl (metadata-only, title embedded in sitemap)",  # noqa: S1192
         "schema_family": "news",
-        "columns": "id, source, title, category, pub_date, url, author, lead, pdf_url, pdf_filename, collected_at, body",
+        "columns": "id, source, title, category, pub_date, url, author, lead, pdf_url, pdf_filename, collected_at, body",  # noqa: S1192
         "file_pattern": "tuoitre_articles.csv",
         "owner": "Tuổi Trẻ Newspaper",
         "notes": "283k records, 2011-2016. Date range dừng 2016 (backfill 1 lần)."
@@ -126,9 +126,9 @@ DATA_SOURCES = [
         "type": "mass_media",
         "url": "https://thanhnien.vn",
         "description": "Tin tức phổ thông từ thanhnien.vn (metadata-only, sitemap crawl)",
-        "crawl_method": "Sitemap shard crawl (metadata-only, title embedded in sitemap)",
+        "crawl_method": "Sitemap shard crawl (metadata-only, title embedded in sitemap)",  # noqa: S1192
         "schema_family": "news",
-        "columns": "id, source, title, category, pub_date, url, author, lead, pdf_url, pdf_filename, collected_at, body",
+        "columns": "id, source, title, category, pub_date, url, author, lead, pdf_url, pdf_filename, collected_at, body",  # noqa: S1192
         "file_pattern": "thanhnien_articles.csv",
         "owner": "Thanh Niên Newspaper",
         "notes": "387k records, 2011-2025. Metadata-only."
@@ -139,9 +139,9 @@ DATA_SOURCES = [
         "type": "mass_media",
         "url": "https://www.vietnamplus.vn",
         "description": "Tin tức phổ thông từ VietnamPlus.vn (metadata-only, sitemap crawl)",
-        "crawl_method": "Sitemap shard crawl (metadata-only, title embedded in sitemap)",
+        "crawl_method": "Sitemap shard crawl (metadata-only, title embedded in sitemap)",  # noqa: S1192
         "schema_family": "news",
-        "columns": "id, source, title, category, pub_date, url, author, lead, pdf_url, pdf_filename, collected_at, body",
+        "columns": "id, source, title, category, pub_date, url, author, lead, pdf_url, pdf_filename, collected_at, body",  # noqa: S1192
         "file_pattern": "vietnamplus_articles.csv",
         "owner": "VietnamPlus (TTXVN)",
         "notes": "773k records, 2010-2026. Lớn nhất. Up-to-date."
@@ -154,7 +154,7 @@ DATA_SOURCES = [
         "description": "Tin tức từ VnExpress (Wayback Machine backfill do chặn bot sitemap)",
         "crawl_method": "Wayback Machine CDX API + snapshot fetch (archive.org)",
         "schema_family": "news",
-        "columns": "id, source, title, category, pub_date, url, author, lead, pdf_url, pdf_filename, collected_at, body",
+        "columns": "id, source, title, category, pub_date, url, author, lead, pdf_url, pdf_filename, collected_at, body",  # noqa: S1192
         "file_pattern": "vnexpress_articles.csv",
         "owner": "VnExpress (FPT Online)",
         "notes": "14k records, 2012-2026. pub_date ≈ snapshot date. Category có sẵn."
@@ -219,7 +219,7 @@ DATA_SOURCES = [
         "description": "Threads từ diễn đàn TraderViet — phân tích CKVN, kiến thức trading",
         "crawl_method": "HTTP requests (XenForo listing pages + thread bodies)",
         "schema_family": "news",
-        "columns": "id, source, title, category, pub_date, url, author, lead, pdf_url, pdf_filename, collected_at, body",
+        "columns": "id, source, title, category, pub_date, url, author, lead, pdf_url, pdf_filename, collected_at, body",  # noqa: S1192
         "file_pattern": "forum_articles.csv",
         "owner": "TraderViet Community",
         "notes": "~800 threads từ stock analysis + trading knowledge sections."
@@ -236,7 +236,7 @@ def safe_read_csv(path: Path, **kwargs) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def compute_stats(path: Path, source_key: str) -> dict:
+def compute_stats(path: Path, _source_key: str) -> dict:
     """Compute comprehensive statistics for a single data file."""
     df = safe_read_csv(path)
     if df.empty:
@@ -302,11 +302,13 @@ def scan_data_dir() -> list[dict]:
 
 def _file_to_key(path: Path) -> str:
     name = path.name
+    if "objective" in str(path):
+        return _objective_key(name)
     mapping = {
         "vnstock_articles.csv": "vnstock",
         "vnstock_pdf_raw.csv": "vnstock_pdf_raw",
-        "vnstock_pdfs_extracted.csv": "vnstock_pdf_raw",  # companion
-        "data.csv": "vnstock",  # legacy
+        "vnstock_pdfs_extracted.csv": "vnstock_pdf_raw",
+        "data.csv": "vnstock",
         "data_archive.csv": "vnstock",
         "data_2021_2025.csv": "vnstock",
         "cafef_articles.csv": "cafef",
@@ -316,65 +318,35 @@ def _file_to_key(path: Path) -> str:
         "tuoitre_articles.csv": "tuoitre",
         "thanhnien_articles.csv": "thanhnien",
         "vietnamplus_articles.csv": "vietnamplus",
-    "vnexpress_articles.csv": "vnexpress",
-    "forum_articles.csv": "forum_traderviet",
-    "news_articles.csv": "news_merged",
+        "vnexpress_articles.csv": "vnexpress",
+        "forum_articles.csv": "forum_traderviet",
+        "news_articles.csv": "news_merged",
         "dxy.csv": "macro_dxy",
         "sbv_policy_rates.csv": "macro_sbv_rates",
     }
-    if "objective" in str(path):
-        if "news_unenriched" in name:
-            for src in ("nld", "thanhnien", "tuoitre", "vietnamplus", "vnexpress"):
-                if src in name:
-                    return f"objective_{src}"
-            return "objective_news_unenriched"
-        if "vietstock_records" in name:
-            return "objective_vn30"
-        if "vsdc_records" in name:
-            return "objective_vsdc"
-        if name.startswith("objective_v"):
-            return "objective_vn30"
-        return "objective"
     return mapping.get(name, "unknown")
 
 
-def generate_report(force: bool = False) -> str:
-    """Generate comprehensive dataset benchmark markdown report."""
-    REPORT_PATH.mkdir(parents=True, exist_ok=True)
-    today = datetime.now(HN_TZ).strftime("%Y-%m-%d %H:%M")
-    filename = REPORT_PATH / f"dataset_benchmark_{datetime.now(HN_TZ).strftime('%Y-%m-%d')}.md"
+def _objective_key(name: str) -> str:
+    if "news_unenriched" in name:
+        for src in ("nld", "thanhnien", "tuoitre", "vietnamplus", "vnexpress"):
+            if src in name:
+                return f"objective_{src}"
+        return "objective_news_unenriched"
+    if "vietstock_records" in name:
+        return "objective_vn30"
+    if "vsdc_records" in name:
+        return "objective_vsdc"
+    if name.startswith("objective_v"):
+        return "objective_vn30"
+    return "objective"
 
-    if filename.exists() and not force:
-        print(f"  Report exists: {filename} (use --force to overwrite)")
-        return str(filename)
 
-    scans = scan_data_dir()
-
-    # Group by source key
-    groups = {}
-    for s in scans:
-        key = s["source_key"]
-        if key not in groups:
-            groups[key] = []
-        groups[key].append(s)
-
-    lines = []
-    _w = lines.append
-
-    _w("# Dataset Benchmark Report — crawl_data")
-    _w("")
-    _w(f"> **Generated:** {today} ICT")
-    _w("> **Project:** Vietstock Analysis Reports Crawler — Multi-source Vietnamese stock market data")
-    _w("> **Purpose:** Dataset documentation for academic paper / professor report")
-    _w("")
-    _w("---")
-    _w("")
-
-    # ── 1. Executive Summary ──
+def _report_executive_summary(_w, scans, groups):
+    """Write Executive Summary section."""
     total_rows = sum(s["rows"] for s in scans)
     total_mb = sum(s["size_mb"] for s in scans)
     src_count = len(groups)
-
     _w("## 1. Executive Summary")
     _w("")
     _w("| Metric | Value |")
@@ -388,12 +360,13 @@ def generate_report(force: bool = False) -> str:
     _w("| **Data types** | Analysis reports, news, broker research, corporate actions, macroeconomics |")
     _w("")
 
-    # ── 2. Data Source Overview ──
+
+def _report_source_overview(_w, groups):
+    """Write Data Source Overview section."""
     _w("## 2. Data Source Overview")
     _w("")
     _w("| # | Source | Type | Records | Size | Date Range | Method |")
     _w("|---|---|---|---|---|---|---|")
-
     for idx, src in enumerate(DATA_SOURCES, 1):
         key = src["key"]
         stats_list = groups.get(key, [])
@@ -402,13 +375,13 @@ def generate_report(force: bool = False) -> str:
         primary = stats_list[0]
         dr = _fmt_date_range(primary)
         _w(f"| {idx} | **{src['name']}** | {src['type']} | {primary['rows']:,} | {primary['size_mb']} MB | {dr} | {src['crawl_method']} |")
-
     _w("")
 
-    # ── 3. Per-Source Detail ──
+
+def _report_per_source_detail(_w, groups):
+    """Write Per-Source Detail section."""
     _w("## 3. Per-Source Detail")
     _w("")
-
     for src in DATA_SOURCES:
         key = src["key"]
         stats_list = groups.get(key, [])
@@ -425,30 +398,24 @@ def generate_report(force: bool = False) -> str:
         _w(f"- **Columns ({primary['columns']}):** `{src['columns']}`")
         _w(f"- **Crawl method:** {src['crawl_method']}")
         _w("")
-
-        # Date range
         if primary["date_range"]:
             for dc, rng in primary["date_range"].items():
                 _w(f"- **Date range ({dc}):** {rng['min']} → {rng['max']}")
-
-        # Unique values
         if primary["unique_values"]:
             uv = "; ".join(f"{k}={v}" for k, v in primary["unique_values"].items())
             _w(f"- **Unique values:** {uv}")
-
-        # Null columns
         if primary["null_columns"]:
-            nulls = {k: v for k, v in sorted(primary["null_columns"].items(), key=lambda x: -x[1])}
+            nulls = dict(sorted(primary["null_columns"].items(), key=lambda x: -x[1]))
             null_str = "; ".join(f"{k}: {v}%" for k, v in list(nulls.items())[:5])
             _w(f"- **Missing data (top 5):** {null_str}")
-
         _w(f"- **Notes:** {src['notes']}")
         _w("")
 
-    # ── 4. Schema Reference ──
+
+def _report_schema_reference(_w):
+    """Write Schema Reference section."""
     _w("## 4. Schema Reference")
     _w("")
-
     schemas = {
         "news": {
             "description": "Unified schema for news articles and broker reports",
@@ -532,7 +499,6 @@ def generate_report(force: bool = False) -> str:
             ],
         },
     }
-
     for schema_name, schema in schemas.items():
         _w(f"### {schema_name.title()} Schema")
         _w("")
@@ -540,15 +506,16 @@ def generate_report(force: bool = False) -> str:
         _w(f"- **Sources:** {schema['sources']}")
         _w("")
         _w("| Field | Type | Description |")
-        _w("|---|---|---|")
+        _w("|---|---|---|")  # noqa: S1192
         for field, ftype, desc in schema["fields"]:
             _w(f"| `{field}` | {ftype} | {desc} |")
         _w("")
 
-    # ── 5. Data Quality Assessment ──
+
+def _report_quality_assessment(_w, scans):
+    """Write Data Quality Assessment section."""
     _w("## 5. Data Quality Assessment")
     _w("")
-
     quality_issues = []
     for s in scans:
         key = s["source_key"]
@@ -562,18 +529,16 @@ def generate_report(force: bool = False) -> str:
                     quality_issues.append(f"- **{name}** — `{col}` missing {pct}% (moderate)")
         if s["rows"] == 0:
             quality_issues.append(f"- **{name}** — empty file ({s['file']})")
-
     if quality_issues:
         _w("### Known Issues")
         _w("")
         for issue in quality_issues:
             _w(f"{issue}")
         _w("")
-
     _w("### Completeness Summary")
     _w("")
     _w("| Source | Completeness | Notes |")
-    _w("|---|---|---|")
+    _w("|---|---|---|")  # noqa: S1192
     for s in scans:
         key = s["source_key"]
         src = next((x for x in DATA_SOURCES if x["key"] == key), None)
@@ -593,7 +558,9 @@ def generate_report(force: bool = False) -> str:
         _w(f"| {name} | {completeness}% | {notes} |")
     _w("")
 
-    # ── 6. Collection Methodology ──
+
+def _report_methodology(_w):
+    """Write Collection Methodology section."""
     _w("## 6. Collection Methodology")
     _w("")
     _w("The dataset is collected using a multi-strategy crawling architecture:")
@@ -611,11 +578,13 @@ def generate_report(force: bool = False) -> str:
         "Used by: Vietstock disclosure API (`/data/EventsTypeData`), VSDC corporate actions.")
     _w("")
 
-    # ── 7. Limitations ──
+
+def _report_limitations(_w):
+    """Write Known Limitations section."""
     _w("## 7. Known Limitations")
     _w("")
     _w("| Issue | Impact | Status |")
-    _w("|---|---|---|")
+    _w("|---|---|---|")  # noqa: S1192
     _w("| HSC lacks pub_date | 39 records undateable | Site limitation |")
     _w("| Cafef deep backfill throttle | Only ~4k dated records | IP throttling by Cafef |")
     _w("| Tuoi Tre data ends 2016 | Missing 2016-2026 | Backfill not re-run |")
@@ -627,11 +596,12 @@ def generate_report(force: bool = False) -> str:
     _w("| Date format inconsistency | DD/MM/YYYY vs ISO mixed in datasets | Normalization needed |")
     _w("")
 
-    # ── 8. Sample Records ──
+
+def _report_sample_records(_w, groups):
+    """Write Sample Records section."""
     _w("## 8. Sample Records")
     _w("")
-
-    for src in DATA_SOURCES[:5]:  # top 5 sources
+    for src in DATA_SOURCES[:5]:
         key = src["key"]
         stats_list = groups.get(key, [])
         if not stats_list:
@@ -650,7 +620,9 @@ def generate_report(force: bool = False) -> str:
         _w("```")
         _w("")
 
-    # ── 9. Citation ──
+
+def _report_citation(_w):
+    """Write Citation section."""
     _w("## 9. Citation")
     _w("")
     _w("If using this dataset in academic work, please cite as:")
@@ -668,6 +640,47 @@ def generate_report(force: bool = False) -> str:
     _w("---")
     _w("")
     _w("*Report generated by `data_catalog.py`*")
+
+
+def generate_report(force: bool = False) -> str:
+    """Generate comprehensive dataset benchmark markdown report."""
+    REPORT_PATH.mkdir(parents=True, exist_ok=True)
+    today = datetime.now(HN_TZ).strftime("%Y-%m-%d %H:%M")
+    filename = REPORT_PATH / f"dataset_benchmark_{datetime.now(HN_TZ).strftime('%Y-%m-%d')}.md"
+
+    if filename.exists() and not force:
+        print(f"  Report exists: {filename} (use --force to overwrite)")
+        return str(filename)
+
+    scans = scan_data_dir()
+    groups = {}
+    for s in scans:
+        key = s["source_key"]
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(s)
+
+    lines = []
+    _w = lines.append
+
+    _w("# Dataset Benchmark Report — crawl_data")
+    _w("")
+    _w(f"> **Generated:** {today} ICT")
+    _w("> **Project:** Vietstock Analysis Reports Crawler — Multi-source Vietnamese stock market data")
+    _w("> **Purpose:** Dataset documentation for academic paper / professor report")
+    _w("")
+    _w("---")
+    _w("")
+
+    _report_executive_summary(_w, scans, groups)
+    _report_source_overview(_w, groups)
+    _report_per_source_detail(_w, groups)
+    _report_schema_reference(_w)
+    _report_quality_assessment(_w, scans)
+    _report_methodology(_w)
+    _report_limitations(_w)
+    _report_sample_records(_w, groups)
+    _report_citation(_w)
 
     report_text = "\n".join(lines)
 
@@ -716,9 +729,8 @@ def _fmt_date_range(stats: dict) -> str:
     dr = stats.get("date_range", {})
     if not dr:
         return "N/A"
-    for dc, rng in dr.items():
+    for rng in dr.values():
         return f"{rng['min'][:10]} → {rng['max'][:10]}"
-    return "N/A"
 
 
 def export_catalog_csv():

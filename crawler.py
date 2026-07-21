@@ -20,6 +20,7 @@ import time
 from datetime import date, datetime
 from pathlib import Path
 
+import aiofiles
 import pandas as pd
 
 # Import modules
@@ -47,6 +48,9 @@ from utils.anti_bot import (
 from utils.dedup import get_dedup_manager
 from utils.pdf_helpers import generate_pdf_filename
 from utils.proxy_manager import get_proxy_manager
+
+_DATE_FMT_DMY = "%d/%m/%Y"
+_XPATH_SELF = "xpath=.."
 
 
 # Setup logging
@@ -113,7 +117,7 @@ class VietstockCrawler:
         """
         if not date_str:
             return None
-        for fmt in ('%d/%m/%Y', '%d/%m/%y'):
+        for fmt in (_DATE_FMT_DMY, '%d/%m/%y'):
             try:
                 return datetime.strptime(date_str.strip(), fmt).date()
             except ValueError:
@@ -231,6 +235,71 @@ class VietstockCrawler:
         )
         return False
 
+    async def _find_report_cards(self) -> list:
+        """Find report card elements using multiple strategies. Returns list of elements."""
+        all_found_items = []
+        try:
+            images = await self.page.query_selector_all('img[src*="edocs"]')
+            logger.info(f"Found {len(images)} report thumbnail images")
+            for img in images:
+                parent = await img.query_selector(_XPATH_SELF)
+                if parent:
+                    grandparent = await parent.query_selector(_XPATH_SELF)
+                    if grandparent:
+                        all_found_items.append(grandparent)
+        except Exception as e:
+            logger.debug(f"Strategy 1 (edoc images) failed: {e}")
+        try:
+            download_links = await self.page.query_selector_all(
+                'a:has-text("Tải về"), a:has-text("Download")'
+            )
+            logger.info(f"Found {len(download_links)} download links")
+            for link in download_links:
+                parent = await link.query_selector(_XPATH_SELF)
+                if parent:
+                    all_found_items.append(parent)
+        except Exception as e:
+            logger.debug(f"Strategy 2 (download links) failed: {e}")
+        return all_found_items
+
+    async def _parse_report_item(self, item, seen_urls) -> dict | None:
+        """Parse a single report card item. Returns report dict or None."""
+        try:
+            links = await item.query_selector_all('a')
+            for link in links:
+                href = await link.get_attribute('href')
+                if not href or href in seen_urls:
+                    continue
+                if 'edoc' not in href.lower() and 'download' not in href.lower():
+                    continue
+                seen_urls.add(href)
+                full_url = BASE_URL + href if href.startswith('/') else href
+                text = await item.inner_text()
+                lines = [line.strip() for line in text.split('\n') if line.strip()]
+                title = lines[0][:100] if lines else "Unknown Report"
+                source = "Vietstock"
+                for line in lines:
+                    if 'Nguồn:' in line or 'nguồn:' in line.lower():
+                        source = line.split(':')[-1].strip()
+                        break
+                date_str = ""
+                import re
+                for line in lines:
+                    match = re.search(r'_(\d{1,2}/\d{1,2}/\d{2,4})_', line)
+                    if match:
+                        date_str = match.group(1)
+                        break
+                    match = re.search(r'(\d{1,2}/\d{1,2}/\d{2,4})', line)
+                    if match:
+                        date_str = match.group(1)
+                        break
+                title_ascii = title.encode('ascii', 'replace').decode('ascii')
+                logger.info(f"Added report: {title_ascii[:50]}... from {source}")
+                return {'title': title, 'url': full_url, 'date': date_str, 'source': source}
+        except Exception as e:
+            logger.debug(f"Error processing item: {e}")
+        return None
+
     async def extract_report_links(self) -> list[dict]:
         """
         Extract report links from current page
@@ -239,130 +308,106 @@ class VietstockCrawler:
             List of report dictionaries with metadata
         """
         reports = []
-
         try:
-            # Wait for page to fully load
             await asyncio.sleep(3)
             await human_like_scroll(self.page, max_scrolls=1)
-
             logger.info("Extracting report links from page...")
-
-            # Strategy: Look for report cards with edoc images (Vietstock report thumbnails)
-            # Based on analysis: Reports have images like https://static1.vietstock.vn/edocs/XXXXX/XXXXX.jpg
-
-            all_found_items = []
-
-            # Strategy 1: Find images with edoc path and get their parent containers
-            try:
-                images = await self.page.query_selector_all('img[src*="edocs"]')
-                logger.info(f"Found {len(images)} report thumbnail images")
-
-                for img in images:
-                    # Get the parent container (likely the report card)
-                    parent = await img.query_selector('xpath=..')
-                    if parent:
-                        # Get the grandparent (card container)
-                        grandparent = await parent.query_selector('xpath=..')
-                        if grandparent:
-                            all_found_items.append(grandparent)
-            except Exception as e:
-                logger.debug(f"Strategy 1 (edoc images) failed: {e}")
-
-            # Strategy 2: Find all links that might be download links
-            try:
-                # Look for links with text "Tải về" or "Download"
-                download_links = await self.page.query_selector_all(
-                    'a:has-text("Tải về"), a:has-text("Download")'
-                )
-                logger.info(f"Found {len(download_links)} download links")
-
-                for link in download_links:
-                    parent = await link.query_selector('xpath=..')
-                    if parent:
-                        all_found_items.append(parent)
-            except Exception as e:
-                logger.debug(f"Strategy 2 (download links) failed: {e}")
-
+            all_found_items = await self._find_report_cards()
             logger.info(f"Total potential items found: {len(all_found_items)}")
-
-            # Process found items - deduplicate by URL
             seen_urls = set()
             for item in all_found_items:
-                try:
-                    # Get all links in this item
-                    links = await item.query_selector_all('a')
-
-                    for link in links:
-                        href = await link.get_attribute('href')
-                        if not href or href in seen_urls:
-                            continue
-
-                        # Filter: Only interested in edoc links or download links
-                        if 'edoc' not in href.lower() and 'download' not in href.lower():
-                            continue
-
-                        seen_urls.add(href)
-
-                        # Make absolute URL
-                        if href.startswith('/'):
-                            full_url = BASE_URL + href
-                        else:
-                            full_url = href
-
-                        # Get text content as potential title
-                        text = await item.inner_text()
-                        lines = [line.strip() for line in text.split('\n') if line.strip()]
-
-                        # First non-empty line is usually the title
-                        title = lines[0] if lines else "Unknown Report"
-                        # Clean up title
-                        title = title[:100]
-
-                        # Look for source (pattern: "Nguồn: XXX")
-                        source = "Vietstock"
-                        for line in lines:
-                            if 'Nguồn:' in line or 'nguồn:' in line.lower():
-                                source = line.split(':')[-1].strip()
-                                break
-
-                        # Extract date (pattern: DD/MM/YYYY or _DD/MM/YYYY_).
-                        # Fallback = rỗng (KHÔNG dùng today) để tránh bug stray-date
-                        # (card thiếu date rõ bị gán ngày crawl → sai cột date).
-                        date_str = ""
-                        import re
-                        for line in lines:
-                            # Match _DD/MM/YYYY_ format
-                            match = re.search(r'_(\d{1,2}/\d{1,2}/\d{2,4})_', line)
-                            if match:
-                                date_str = match.group(1)
-                                break
-                            # Match DD/MM/YYYY format
-                            match = re.search(r'(\d{1,2}/\d{1,2}/\d{2,4})', line)
-                            if match:
-                                date_str = match.group(1)
-                                break
-
-                        reports.append({
-                            'title': title,
-                            'url': full_url,
-                            'date': date_str,
-                            'source': source
-                        })
-                        # ASCII-only logging for console
-                        title_ascii = title.encode('ascii', 'replace').decode('ascii')
-                        logger.info(f"Added report: {title_ascii[:50]}... from {source}")
-                        break  # Only take first valid link from each item
-
-                except Exception as e:
-                    logger.debug(f"Error processing item: {e}")
-                    continue
-
+                report = await self._parse_report_item(item, seen_urls)
+                if report:
+                    reports.append(report)
+                    break
             logger.info(f"Successfully extracted {len(reports)} unique reports")
-
         except Exception as e:
             logger.error(f"Error extracting report links: {e}")
-
         return reports
+
+    async def _download_pdf_via_requests(
+        self, pdf_url: str, pdf_path: Path, filename: str
+    ) -> str | None:
+        """Download PDF via requests with browser cookies. Returns filename or None."""
+        import requests
+        cookies = await self.context.cookies()
+        ua = self.browser_ua or get_random_user_agent()
+        last_err = "unknown"
+        for attempt in range(1, 4):
+            session = requests.Session()
+            for cookie in cookies:
+                session.cookies.set(cookie['name'], cookie['value'])
+            session.headers.update({'User-Agent': ua, 'Referer': str(TARGET_URL)})
+            try:
+                response = await asyncio.to_thread(
+                    lambda s=session: s.get(pdf_url, stream=True, timeout=60)
+                )
+                if response.status_code < 400:
+                    content_type = response.headers.get('content-type', '')
+                    if 'pdf' in content_type.lower():
+                        async with aiofiles.open(pdf_path, 'wb') as f:
+                            for chunk in response.iter_content(chunk_size=8192):
+                                if chunk:
+                                    await f.write(chunk)
+                        logger.info(f"Downloaded PDF: {filename}")
+                        return filename
+                    last_err = f"non-PDF content-type: {content_type}"
+                else:
+                    last_err = f"HTTP {response.status_code}"
+            except requests.RequestException as e:
+                last_err = str(e)
+            logger.warning(
+                f"Download attempt {attempt}/3 failed ({last_err}); "
+                f"backing off before retry"
+            )
+            if attempt < 3:
+                await asyncio.sleep(8 * attempt)
+        logger.warning(
+            f"Requests download exhausted after retries ({last_err}); "
+            f"trying Playwright fallback"
+        )
+        return await self._download_pdf_playwright(pdf_url, pdf_path, filename)
+
+    async def _download_pdf_via_playwright_nav(
+        self, pdf_url: str, pdf_path: Path, filename: str
+    ) -> str | None:
+        """Download PDF by navigating to page and clicking download button."""
+        if not await safe_goto(self.page, pdf_url):
+            return None
+        await asyncio.sleep(2)
+        if await self.check_for_captcha():
+            await self.pause_on_captcha()
+            return None
+        pdf_selectors = [
+            'a[href$=".pdf"]',
+            'a:has-text("PDF")',
+            'a:has-text("Tải về")',
+            'a:has-text("Download")',
+            '.btn-download',
+            '[class*="download"]'
+        ]
+        found_pdf_url = None
+        for selector in pdf_selectors:
+            try:
+                pdf_elem = await self.page.query_selector(selector)
+                if pdf_elem:
+                    found_pdf_url = await pdf_elem.get_attribute('href')
+                    if found_pdf_url:
+                        break
+            except Exception:
+                continue
+        if not found_pdf_url:
+            title_ascii = filename.encode('ascii', 'replace').decode('ascii')
+            logger.warning(f"No PDF link found for: {title_ascii}")
+            return None
+        if found_pdf_url.startswith('/'):
+            found_pdf_url = BASE_URL + found_pdf_url
+        async with self.page.expect_download() as download_info:
+            await self.page.click(f'a[href="{found_pdf_url}"]')
+        download = await download_info.value
+        await download.save_as(str(pdf_path))
+        logger.info(f"Downloaded PDF: {filename}")
+        return filename
 
     async def download_pdf(self, report: dict) -> str | None:
         """
@@ -375,119 +420,17 @@ class VietstockCrawler:
             Path to downloaded PDF or None if failed
         """
         try:
-            # The report URL is likely a direct download link
             pdf_url = report['url']
-
-            # Generate filename
             filename = self.generate_pdf_filename(report['title'], report['date'])
             pdf_path = PDF_PATH / filename
-
-            # Check if PDF already exists
             if pdf_path.exists():
                 logger.info(f"PDF already exists: {filename}")
                 return filename
-
-            # Check if URL is a direct download link (downloadedoc, or any .pdf URL
-            # such as static1.vietstock.vn/edocs/.../file.pdf)
             if 'downloadedoc' in pdf_url.lower() or pdf_url.lower().endswith('.pdf'):
-                # Direct download - use requests with browser cookies + the browser's
-                # own User-Agent. A random fake-useragent UA is sometimes rejected by
-                # Vietstock with HTTP 4xx; the browser UA is always accepted. Retry
-                # with backoff for transient 4xx/5xx, then fall back to Playwright.
                 logger.info(f"Direct download from: {pdf_url}")
-
-                import requests
-                cookies = await self.context.cookies()
-                ua = self.browser_ua or get_random_user_agent()
-
-                last_err = "unknown"
-                for attempt in range(1, 4):  # up to 3 attempts
-                    session = requests.Session()
-                    for cookie in cookies:
-                        session.cookies.set(cookie['name'], cookie['value'])
-                    session.headers.update({'User-Agent': ua, 'Referer': str(TARGET_URL)})
-                    try:
-                        response = session.get(pdf_url, stream=True, timeout=60)
-                        if response.status_code < 400:
-                            content_type = response.headers.get('content-type', '')
-                            if 'pdf' in content_type.lower():
-                                with open(pdf_path, 'wb') as f:
-                                    for chunk in response.iter_content(chunk_size=8192):
-                                        if chunk:
-                                            f.write(chunk)
-                                logger.info(f"Downloaded PDF: {filename}")
-                                return filename
-                            last_err = f"non-PDF content-type: {content_type}"
-                        else:
-                            last_err = f"HTTP {response.status_code}"
-                    except requests.RequestException as e:
-                        last_err = str(e)
-
-                    logger.warning(
-                        f"Download attempt {attempt}/3 failed ({last_err}); "
-                        f"backing off before retry"
-                    )
-                    if attempt < 3:
-                        await asyncio.sleep(8 * attempt)
-
-                logger.warning(
-                    f"Requests download exhausted after retries ({last_err}); "
-                    f"trying Playwright fallback"
-                )
-                return await self._download_pdf_playwright(pdf_url, pdf_path, filename)
-
+                return await self._download_pdf_via_requests(pdf_url, pdf_path, filename)
             else:
-                # Navigate to report page and find download link
-                if not await safe_goto(self.page, pdf_url):
-                    return None
-
-                await asyncio.sleep(2)
-
-                # Check for captcha -> pause (skill BUOC 5) then skip this report
-                if await self.check_for_captcha():
-                    await self.pause_on_captcha()
-                    return None
-
-                # Look for PDF download link/button
-                pdf_selectors = [
-                    'a[href$=".pdf"]',
-                    'a:has-text("PDF")',
-                    'a:has-text("Tải về")',
-                    'a:has-text("Download")',
-                    '.btn-download',
-                    '[class*="download"]'
-                ]
-
-                found_pdf_url = None
-                for selector in pdf_selectors:
-                    try:
-                        pdf_elem = await self.page.query_selector(selector)
-                        if pdf_elem:
-                            found_pdf_url = await pdf_elem.get_attribute('href')
-                            if found_pdf_url:
-                                break
-                    except Exception:
-                        continue
-
-                if not found_pdf_url:
-                    title_ascii = report['title'].encode('ascii', 'replace').decode('ascii')
-                    logger.warning(f"No PDF link found for: {title_ascii}")
-                    return None
-
-                # Make absolute URL if needed
-                if found_pdf_url.startswith('/'):
-                    found_pdf_url = BASE_URL + found_pdf_url
-
-                # Download PDF using Playwright
-                async with self.page.expect_download() as download_info:
-                    await self.page.click(f'a[href="{found_pdf_url}"]')
-
-                download = await download_info.value
-                await download.save_as(str(pdf_path))
-
-                logger.info(f"Downloaded PDF: {filename}")
-                return filename
-
+                return await self._download_pdf_via_playwright_nav(pdf_url, pdf_path, filename)
         except Exception as e:
             title_ascii = report['title'].encode('ascii', 'replace').decode('ascii')
             logger.error(f"Error downloading PDF for {title_ascii}: {e}")
@@ -530,8 +473,8 @@ class VietstockCrawler:
                 return None
 
             body = await response.body()
-            with open(pdf_path, 'wb') as f:
-                f.write(body)
+            async with aiofiles.open(pdf_path, 'wb') as f:
+                await f.write(body)
 
             logger.info(f"Downloaded PDF via Playwright (APIRequest): {filename}")
             return filename
@@ -706,11 +649,9 @@ class VietstockCrawler:
                     df = pd.read_csv(CSV_FILE, encoding='utf-8-sig')
                 else:
                     df = pd.DataFrame(columns=CSV_HEADERS)
-                # Merge any pending batches first (main CSV is about to be writable)
                 df, pending_count, pending_files = self._merge_pending(df)
                 df = pd.concat([df, df_new], ignore_index=True)
                 df.to_csv(CSV_FILE, index=False, encoding='utf-8-sig')
-                # Success: clean up the merged pending files
                 for f in pending_files:
                     try:
                         f.unlink()
@@ -739,6 +680,45 @@ class VietstockCrawler:
                 logger.error(f"Error saving to CSV: {e}")
                 return
 
+    async def _process_single_report(self, report: dict) -> tuple[dict | None, date | None]:
+        """Process a single report: filter, dedup, download."""
+        rdate = self.parse_report_date(report['date'])
+        if self.start_date and rdate and rdate < self.start_date:
+            title_ascii = report['title'].encode('ascii', 'replace').decode('ascii')
+            logger.info(
+                f"Skipping (before start-date {self.start_date.isoformat()}): "
+                f"{title_ascii}"
+            )
+            self.skipped_count += 1
+            return None, rdate
+        if self.end_date and rdate and rdate > self.end_date:
+            title_ascii = report['title'].encode('ascii', 'replace').decode('ascii')
+            logger.info(f"Skipping (after end-date {self.end_date.isoformat()}): {title_ascii}")
+            self.skipped_count += 1
+            return None, rdate
+        if self.dedup.is_duplicate(report['url']):
+            title_ascii = report['title'].encode('ascii', 'replace').decode('ascii')
+            logger.info(f"Skipping duplicate: {title_ascii}")
+            self.skipped_count += 1
+            return None, rdate
+        pdf_filename = await self.download_pdf(report) if DOWNLOAD_PDF else None
+        record = {
+            'id': f"{report['date']}_{self.crawled_count}",
+            'title': report['title'],
+            'source': report['source'],
+            'date': report['date'],
+            'pdf_url': report['url'],
+            'pdf_filename': pdf_filename,
+            'downloaded_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        self.dedup.add_to_seen(report['url'], record['id'])
+        self.crawled_count += 1
+        if pdf_filename:
+            self.downloaded_count += 1
+        if DOWNLOAD_PDF:
+            await asyncio.sleep(random.uniform(RANDOM_DELAY_MIN, RANDOM_DELAY_MAX))
+        return record, rdate
+
     async def _collect_reports(self, reports: list[dict]):
         """Process one page's reports: optional date-range filter, dedup,
         download (if DOWNLOAD_PDF), build records, mark seen.
@@ -747,63 +727,13 @@ class VietstockCrawler:
         crawl_by_windows() so the collection logic stays in one place.
         """
         new_data = []
-        parsed_dates = []  # used by crawl() to detect the start-date boundary
+        parsed_dates = []
         for report in reports:
-            rdate = self.parse_report_date(report['date'])
+            record, rdate = await self._process_single_report(report)
             if rdate:
                 parsed_dates.append(rdate)
-
-            # Date-range filter (per-report; not used in window-crawl mode)
-            if self.start_date and rdate and rdate < self.start_date:
-                title_ascii = report['title'].encode('ascii', 'replace').decode('ascii')
-                logger.info(
-                    f"Skipping (before start-date {self.start_date.isoformat()}): "
-                    f"{title_ascii}"
-                )
-                self.skipped_count += 1
-                continue
-            if self.end_date and rdate and rdate > self.end_date:
-                title_ascii = report['title'].encode('ascii', 'replace').decode('ascii')
-                logger.info(f"Skipping (after end-date {self.end_date.isoformat()}): {title_ascii}")
-                self.skipped_count += 1
-                continue
-
-            # Check for duplicates
-            if self.dedup.is_duplicate(report['url']):
-                title_ascii = report['title'].encode('ascii', 'replace').decode('ascii')
-                logger.info(f"Skipping duplicate: {title_ascii}")
-                self.skipped_count += 1
-                continue
-
-            # Download PDF unless disabled. In metadata-only mode
-            # (DOWNLOAD_PDF=false) we skip the download AND the per-report
-            # random delay so the crawl runs as fast as possible; pdf_url is
-            # still recorded so the file can be fetched in a later pass.
-            if DOWNLOAD_PDF:
-                pdf_filename = await self.download_pdf(report)
-            else:
-                pdf_filename = None
-
-            record = {
-                'id': f"{report['date']}_{len(new_data)}",
-                'title': report['title'],
-                'source': report['source'],
-                'date': report['date'],
-                'pdf_url': report['url'],
-                'pdf_filename': pdf_filename,
-                'downloaded_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            }
-            new_data.append(record)
-
-            self.dedup.add_to_seen(report['url'], record['id'])
-            self.crawled_count += 1
-            if pdf_filename:
-                self.downloaded_count += 1
-
-            # Random delay between downloads (only when actually downloading)
-            if DOWNLOAD_PDF:
-                await asyncio.sleep(random.uniform(RANDOM_DELAY_MIN, RANDOM_DELAY_MAX))
-
+            if record:
+                new_data.append(record)
         return new_data, parsed_dates
 
     async def apply_date_window(self, from_ddmmyyyy: str, to_ddmmyyyy: str) -> bool:
@@ -840,6 +770,29 @@ class VietstockCrawler:
             logger.error(f"apply_date_window failed for {from_ddmmyyyy}-{to_ddmmyyyy}: {e}")
             return False
 
+    async def _process_window(self, wf: str, wt: str) -> int:
+        """Process a single date window. Returns number of new reports."""
+        window_new = 0
+        page_num = 1
+        while True:
+            logger.info(f"Processing page {page_num} (window {wf}-{wt})...")
+            reports = await self.extract_report_links()
+            new_data, _ = await self._collect_reports(reports)
+            if new_data:
+                self.save_to_csv(new_data)
+                window_new += len(new_data)
+            if self.test_mode:
+                logger.info("Test mode: stopping after first page of this window")
+                break
+            if self.max_pages and page_num >= self.max_pages:
+                logger.info(f"Reached max_pages ({self.max_pages}) in window {wf}-{wt}")
+                break
+            if not await self.handle_pagination():
+                logger.info(f"Window {wf}-{wt} exhausted (no more pages)")
+                break
+            page_num += 1
+        return window_new
+
     async def crawl_by_windows(self):
         """Crawl old data by applying successive date windows to the listing
         filter. self.window_ranges is a list of (from_ddmmyyyy, to_ddmmyyyy)
@@ -856,12 +809,6 @@ class VietstockCrawler:
 
             for wf, wt in self.window_ranges:
                 logger.info(f"===== Window {wf} -> {wt} =====")
-                # Retry navigate+apply once on transient failure (captcha/timeout) so a
-                # single hiccup mid-run doesn't silently drop a whole window. Observed:
-                # a long --from-date 2001 backfill missed ~95% of 2016 (got 18/388) and
-                # ~12% of 2015, then recovered for 2017+ — a transient window-skip, not a
-                # logic bug. This retry catches navigate/apply failures; a partial-window
-                # miss (few pages captured) is still possible and only shows as a low count.
                 window_ready = False
                 for attempt in (1, 2):
                     if not await self.navigate_to_target():
@@ -882,26 +829,7 @@ class VietstockCrawler:
                     logger.warning(f"Could not load+apply window {wf}-{wt} after retry; skipping")
                     continue
 
-                page_num = 1
-                window_new = 0
-                while True:
-                    logger.info(f"Processing page {page_num} (window {wf}-{wt})...")
-                    reports = await self.extract_report_links()
-                    new_data, _ = await self._collect_reports(reports)
-                    if new_data:
-                        self.save_to_csv(new_data)
-                        window_new += len(new_data)
-
-                    if self.test_mode:
-                        logger.info("Test mode: stopping after first page of this window")
-                        break
-                    if self.max_pages and page_num >= self.max_pages:
-                        logger.info(f"Reached max_pages ({self.max_pages}) in window {wf}-{wt}")
-                        break
-                    if not await self.handle_pagination():
-                        logger.info(f"Window {wf}-{wt} exhausted (no more pages)")
-                        break
-                    page_num += 1
+                window_new = await self._process_window(wf, wt)
 
                 if window_new == 0:
                     logger.warning(
@@ -925,24 +853,15 @@ class VietstockCrawler:
         """Main crawl method"""
         try:
             await self.init_browser()
-
-            # Ensure directories exist
             ensure_paths_exist()
-
-            # Initialize dedup manager
             self.dedup.init_csv_file()
-            # Recover any records left in pending files (e.g. previous run ended
-            # while CSV was locked) BEFORE loading dedup, so they count as seen.
             self._recover_pending()
             self.dedup.load_existing_data()
 
             logger.info("Starting crawl...")
             page_num = 1
-            need_navigate = True  # whether to navigate before the next extraction
+            need_navigate = True
 
-            # Fast-forward: jump to start_page without extracting/downloading.
-            # Lets you re-crawl a specific page (e.g. recover a page whose CSV
-            # save failed) without re-walking earlier, already-crawled pages.
             if self.start_page > 1:
                 logger.info(
                     f"Fast-forwarding to page {self.start_page} "
@@ -961,12 +880,10 @@ class VietstockCrawler:
                         break
                     clicked += 1
                 page_num = self.start_page
-                need_navigate = False  # already on the target page
+                need_navigate = False
 
             while True:
                 logger.info(f"Processing page {page_num}...")
-
-                # Navigate to target (first page) or handle pagination
                 if need_navigate:
                     if page_num == 1:
                         if not await self.navigate_to_target():
@@ -975,26 +892,18 @@ class VietstockCrawler:
                         if not await self.handle_pagination():
                             logger.info("No more pages available")
                             break
-                need_navigate = True  # next iteration must advance to a new page
+                need_navigate = True
 
-                # Extract report links
                 reports = await self.extract_report_links()
-
                 if not reports:
                     logger.warning(f"No reports found on page {page_num}")
-                    # Try to continue to next page
                     page_num += 1
                     continue
 
-                # Process each report (date-filter, dedup, download, record)
                 new_data, parsed_dates = await self._collect_reports(reports)
-
-                # Save new data to CSV
                 if new_data:
                     self.save_to_csv(new_data)
 
-                # Date-bound stop: reports are sorted newest-first, so once a
-                # whole page is older than start_date everything after is too.
                 if (self.start_date and parsed_dates
                         and all(d < self.start_date for d in parsed_dates)):
                     logger.info(
@@ -1003,12 +912,10 @@ class VietstockCrawler:
                     )
                     break
 
-                # Test mode - only crawl first page
                 if self.test_mode:
                     logger.info("Test mode: stopping after first page")
                     break
 
-                # Max pages limit - stop after N pages (0 = unlimited)
                 if self.max_pages and page_num >= self.max_pages:
                     logger.info(f"Reached max_pages limit ({self.max_pages}) - stopping")
                     break
@@ -1017,7 +924,6 @@ class VietstockCrawler:
 
         except Exception as e:
             logger.error(f"Crawl error: {e}")
-            # Send error alert
             await self.alert.log_error_alert(
                 str(e), f"Page URL: {self.page.url if self.page else 'N/A'}"
             )
@@ -1054,7 +960,7 @@ def _build_windows(from_date: date, to_date: date, months_step: int) -> list[tup
         end_month = _month_add(start, months_step - 1)
         last_day = calendar.monthrange(end_month.year, end_month.month)[1]
         w_end = min(date(end_month.year, end_month.month, last_day), to_date)
-        windows.append((start.strftime('%d/%m/%Y'), w_end.strftime('%d/%m/%Y')))
+        windows.append((start.strftime(_DATE_FMT_DMY), w_end.strftime(_DATE_FMT_DMY)))
         start = _month_add(start, months_step)
     return windows
 

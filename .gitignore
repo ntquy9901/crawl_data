@@ -49,3 +49,7 @@ _bmad/config.toml
 # Local tooling / data (not this project's source)
 .opencode/
 aggregated/
+
+cookies.txt
+sonar-project.properties
+.scannerwork/

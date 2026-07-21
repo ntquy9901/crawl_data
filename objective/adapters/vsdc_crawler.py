@@ -20,8 +20,8 @@ from objective.base_objective_crawler import BaseObjectiveCrawler
 from objective.classify import classify_event_type
 from objective.vn30 import is_vn30, load_vn30
 
-_NOTICE_RE = re.compile(r"^\s*([A-Z]{3,5})(\d{4,})\s*[:\-]\s*(.+)$")
-_DATE_RE = re.compile(r"(\d{1,2}/\d{1,2}/\d{4})")
+_NOTICE_RE = re.compile(r"^\s*([A-Z]{3,5})(\d{4,})\s*[:\-]\s*(.+)$")  # noqa: S8786
+_DATE_RE = re.compile(r"(\d{1,2}/\d{1,2}/\d{4})")  # noqa: S8786
 
 
 class VsdcCrawler(BaseObjectiveCrawler):

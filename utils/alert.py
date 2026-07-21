@@ -60,9 +60,6 @@ class CaptchaDetector:
 class AlertManager:
     """Logs alerts (replaces email alerts)"""
 
-    def __init__(self):
-        pass
-
     def log_alert(
         self,
         subject: str,
@@ -89,11 +86,11 @@ class AlertManager:
 
             return True
 
-        except Exception as e:
-            logger.error(f"Failed to log alert: {e}")
+        except Exception:
+            logger.exception("Failed to log alert")
             return False
 
-    async def log_captcha_alert(
+    def log_captcha_alert(
         self,
         url: str,
         reason: str,
@@ -122,7 +119,7 @@ The crawler will pause for 5 minutes before retrying.
 """
         return self.log_alert(subject, body, screenshot_path)
 
-    async def log_error_alert(
+    def log_error_alert(
         self,
         error_message: str,
         context: str = ""
