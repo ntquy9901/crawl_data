@@ -12,14 +12,22 @@ from data_classification import classify
 DATA = Path(__file__).parent / "data"
 # file + rename map (đưa về schema chung). Cafef dùng tên cột khác (article_url/section).
 SOURCES = {
-    "cafef":       ("cafef_articles.csv",       {"article_url": "url", "section": "category"}),
-    "ssi":         ("ssi_articles.csv",         {}),
-    "hsc":         ("hsc_articles.csv",         {}),
-    "vndirect":    ("vndirect_articles.csv",    {}),
-    "tuoitre":     ("tuoitre_articles.csv",     {}),
-    "thanhnien":   ("thanhnien_articles.csv",   {}),
-    "vietnamplus": ("vietnamplus_articles.csv", {}),
-    "vnexpress":   ("vnexpress_articles.csv",   {}),
+    "cafef":       ("cafef_articles.csv", {"article_url": "url", "section": "category"}),
+    "ssi":         ("ssi_articles.csv",                {}),
+    "hsc":         ("hsc_articles.csv",                {}),
+    "vndirect":    ("vndirect_articles.csv",           {}),
+    "tuoitre":     ("tuoitre_articles.csv",            {}),
+    "thanhnien":   ("thanhnien_articles.csv",          {}),
+    "vietnamplus": ("vietnamplus_articles.csv",        {}),
+    "vnexpress":   ("vnexpress_articles.csv",          {}),
+    "vneconomy":   ("vneconomy_articles.csv",          {}),
+    "baodautu":    ("baodautu_articles.csv",           {}),
+    "tinnhanhchungkhoan": ("tinnhanhchungkhoan_articles.csv", {}),
+    "forum":       ("forum_articles.csv",              {}),
+    "telegram_kakatachannel": ("telegram_kakatachannel_articles.csv", {}),
+    "telegram_chungkhoanvietnammoon": ("telegram_chungkhoanvietnammoon_articles.csv", {}),
+    "telegram_chungkhoanvietnam2026": ("telegram_chungkhoanvietnam2026_articles.csv", {}),
+    "telegram_chungkhoanF0": ("telegram_chungkhoanF0_articles.csv", {}),
 }
 UNIFIED = [
     "source", "data_type", "title", "category", "pub_date",

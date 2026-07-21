@@ -1,26 +1,26 @@
 """
 News sitemap-backfill crawler — metadata-only (title/url/pub_date) cho báo tin tức
-phổ thông không có RSS lịch sử: tuoitre, thanhnien, vietnamplus.
+phổ thông không có RSS lịch sử: tuoitre, thanhnien, vietnamplus, vneconomy,
+baodautu, tinnhanhchungkhoan.
 
-Sitemap của 3 nguồn này đã nhúng sẵn title (image:title hoặc news:title trong mỗi
-<url> block) → KHÔNG cần fetch từng bài (nhẹ hơn nhiều so với cafef backfill, vốn phải
-fetch từng bài để đọc breadcrumb). Flow: sitemap index → shard XML (theo ngày/tháng,
-tên shard mã hoá sẵn năm-tháng) → parse trực tiếp.
+Sitemap của tuoitre/thanhnien/vietnamplus đã nhúng sẵn title (image:title hoặc
+news:title trong mỗi <url> block) → KHÔNG cần fetch từng bài. vneconomy/baodautu/
+tinnhanhchungkhoan chỉ có <loc> và <lastmod>, title được suy từ URL slug
+(đủ dùng cho metadata-only; fetch body sau để lấy title thật).
 
-Floor thực tế của sitemap mỗi nguồn (khảo sát 2026-07-18, KHÔNG phải 2000 — CMS hiện tại
-của báo VN chỉ bắt đầu ~2010-2011):
-  - tuoitre     floor ~2011-01 (StaticSitemaps/sitemaps-YYYY-M-d1-d2.xml, shard 5 ngày)
-  - thanhnien   floor ~2011-06 (sitemaps/sitemaps-YYYY-M-d1-d2.xml, shard 5 ngày)
-  - vietnamplus floor ~2010-01 (sitemaps/news-YYYY-M.xml, shard theo tháng)
+Floor thực tế của sitemap mỗi nguồn (khảo sát 2026-07-22):
+  - tuoitre            floor ~2011-01 (StaticSitemaps/sitemaps-YYYY-M-d1-d2.xml)
+  - thanhnien          floor ~2011-06 (sitemaps/sitemaps-YYYY-M-d1-d2.xml)
+  - vietnamplus        floor ~2010-01 (sitemaps/news-YYYY-M.xml)
+  - vneconomy          floor ~2007-01 (sitemap/news-YYYY-MM.xml)
+  - baodautu           floor ~2013-01 (sitemaps/news-YYYY-M.xml)
+  - tinnhanhchungkhoan floor ~2010-01 (sitemaps/news-YYYY-M.xml)
 
-nld.com.vn KHÔNG có trong danh sách: domain redirect toàn bộ (kể cả RSS) sang
-tuoitre.vn/nld/* — nội dung trùng lặp Tuổi Trẻ, không phải nguồn độc lập.
+nld.com.vn KHÔNG có: domain redirect toàn bộ (kể cả RSS) sang tuoitre.vn/nld/*.
 
-vnexpress KHÔNG có trong danh sách: sitemap index đọc được, nhưng mỗi shard theo ngày
-(articles-YYYY-sitemap.xml?m=&d=) bị chặn bot (redirect 302 kể cả Googlebot UA và
-Playwright headless trần) — cần stealth mạnh hơn, để sau.
+vnexpress KHÔNG có: sitemap shard theo ngày bị chặn bot (redirect 302) — cần stealth.
 
-Plain HTTP (requests) — cả 3 nguồn không chặn bot ở tầng sitemap.
+Plain HTTP (requests) — tất cả nguồn không chặn bot ở tầng sitemap.
 """
 from __future__ import annotations
 
@@ -49,6 +49,15 @@ def clean_title(raw: str) -> str:
     return (m.group(1) if m else unescaped).strip()
 
 
+ID_SUFFIX_RE = re.compile(r"-(?:post|d)\d+$")
+
+def slug_to_title(url: str) -> str:
+    stem = url.rsplit("/", 1)[-1]
+    stem = stem.rsplit(".", 1)[0]
+    stem = ID_SUFFIX_RE.sub("", stem)
+    return " ".join(w.capitalize() for w in stem.replace("-", " ").split())
+
+
 SOURCES = {
     "tuoitre": {
         "index_url": "https://tuoitre.vn/sitemaps/index.rss",
@@ -69,6 +78,27 @@ SOURCES = {
         "shard_re": re.compile(
             r"<loc>(https://www\.vietnamplus\.vn/sitemaps/news-(\d{4})-(\d{1,2})\.xml)</loc>"),
         "article_suffix": ".vnp",
+        "floor": date(2010, 1, 1),
+    },
+    "vneconomy": {
+        "index_url": "https://vneconomy.vn/sitemap.xml",
+        "shard_re": re.compile(
+            r"<loc>(https://vneconomy\.vn/sitemap/news-(\d{4})-(\d{2})\.xml)</loc>"),
+        "article_suffix": ".htm",
+        "floor": date(2007, 1, 1),
+    },
+    "baodautu": {
+        "index_url": "https://baodautu.vn/sitemap.xml",
+        "shard_re": re.compile(
+            r"<loc>(https://baodautu\.vn/sitemaps/news-(\d{4})-(\d{1,2})\.xml)</loc>"),
+        "article_suffix": ".html",
+        "floor": date(2013, 1, 1),
+    },
+    "tinnhanhchungkhoan": {
+        "index_url": "https://www.tinnhanhchungkhoan.vn/sitemap.xml",
+        "shard_re": re.compile(
+            r"<loc>(https://www\.tinnhanhchungkhoan\.vn/sitemaps/news-(\d{4})-(\d{1,2})\.xml)</loc>"),
+        "article_suffix": ".html",
         "floor": date(2010, 1, 1),
     },
 }
@@ -93,18 +123,25 @@ def shards_in_range(index_xml: str, shard_re: re.Pattern, from_d: date, to_d: da
 
 
 def parse_shard(xml_text: str, article_suffix: str) -> list[dict]:
-    """Trích {url, pub_date, title} từ mỗi <url> block. Title: image:title hoặc news:title."""
+    """Trích {url, pub_date, title} từ mỗi <url> block.
+    Title từ image:title/news:title nếu có; fallback slug-to-title."""
     out = []
     for block in URL_BLOCK_RE.findall(xml_text):
         loc_m = LOC_RE.search(block)
-        if not loc_m or not loc_m.group(1).endswith(article_suffix):
+        if not loc_m:
+            continue
+        url = loc_m.group(1).strip()
+        if not url.endswith(article_suffix):
             continue
         lastmod_m = LASTMOD_RE.search(block)
         title_m = NEWS_TITLE_RE.search(block) or IMAGE_TITLE_RE.search(block)
+        title = clean_title(title_m.group(1)) if title_m else ""
+        if not title:
+            title = slug_to_title(url)
         out.append({
-            "url": loc_m.group(1),
+            "url": url,
             "pub_date": lastmod_m.group(1) if lastmod_m else "",
-            "title": clean_title(title_m.group(1)) if title_m else "",
+            "title": title,
         })
     return out
 

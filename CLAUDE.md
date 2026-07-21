@@ -151,6 +151,29 @@ Luôn set `PYTHONUTF8=1` trên Windows (CSV luôn UTF-8 BOM).
 4. **Dedup đánh dấu "đã thấy" ngay cả khi download fail** → re-run không retry bản fail. Cần xoá row khỏi CSV trước khi crawl lại.
 5. **CHƯA fix — extraction gán `date`=hôm nay khi card thiếu date rõ** → cột `date` sai (phồng năm gần, hút năm xa). `pdf_url` vẫn đúng. Xem Trạng thái.
 
+## 6. Clean Code (strict — tất cả ngôn ngữ)
+
+- Viết code thể hiện rõ ý định qua tên có nghĩa và luồng điều khiển tường minh.
+- Mỗi hàm một trách nhiệm, một mức trừu tượng. Dùng guard clause và early return thay cho if lồng sâu.
+- Tách domain logic khỏi UI, HTTP, database, file I/O, framework.
+- Không có global state biến đổi được, không cache in-process vô hạn (phải có TTL/size limit).
+- Validate untrusted input tại biên hệ thống.
+- Xử lý lỗi tường minh; không swallow exception, không dùng exception cho luồng điều khiển bình thường.
+- Không duplicate business rule giữa các module. Ưu tiên small duplication hơn premature abstraction sai.
+- Áp dụng KISS/YAGNI: không thêm speculative framework hay extension point.
+- Comment phải giải thích **why** (ràng buộc, quyết định không hiển nhiên) — không restate code.
+- Không hardcode secret, URL môi trường cụ thể, absolute local path, credential.
+- Thay magic value bằng named constant có nghĩa.
+- Module phải cohesive; không có dumping ground như `utils`, `helpers`, `misc`.
+- Production logic trong module version-controlled/testable — không chỉ trong notebook.
+- Tách pure computation khỏi I/O để business logic deterministic và testable.
+- Inject dependency bên ngoài (clock, randomness, HTTP client, v.v.).
+- Test deterministic, độc lập, Arrange–Act–Assert rõ ràng.
+- Log actionable context (structured); không log secret hay dữ liệu cá nhân.
+- Tối ưu chỉ sau khi đo lường, trừ khi ràng buộc hệ thống đã được ghi nhận.
+- Xoá dead code — không comment out.
+- Trong một focused change: không refactor không liên quan.
+- Theo convention hiện tại của dự án, trừ khi thay đổi convention là một phần scope.
 
 # Project Quality Rules
 
