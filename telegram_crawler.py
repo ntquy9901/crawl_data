@@ -45,6 +45,22 @@ CHANNELS: dict[str, dict] = {
         "username": "ChungKhoanVietNam2026",
         "display": "Chứng Khoán Việt Nam 2026",
     },
+    "vnwallstreet": {
+        "username": "vnwallstreet",
+        "display": "VN Wall Street",
+    },
+    "FinancialStreetVN": {
+        "username": "FinancialStreetVN",
+        "display": "Channel Phố Tài Chính",
+    },
+    "chungkhoantangtruong": {
+        "username": "chungkhoantangtruong",
+        "display": "Chứng khoán tăng trưởng",
+    },
+    "longshortlientuc": {
+        "username": "longshortlientuc",
+        "display": "Long Short Liên Tục",
+    },
 }
 
 MESSAGE_WRAP_RE = re.compile(

@@ -15,6 +15,13 @@ Run "HSC latest (Research Insights)" "python hsc_crawler.py --latest --csv data/
 foreach ($src in @("tuoitre", "thanhnien", "vietnamplus")) {
     Run "$src latest (sitemap 7 ngày)" "python news_sitemap_crawler.py --source $src --latest --csv data/${src}_articles.csv"
 }
+# CafeBiz: sitemap 7 ngày (cùng pattern tuoitre, có image:title)
+Run "cafebiz latest (sitemap 7 ngày)" "python news_sitemap_crawler.py --source cafebiz --latest --csv data/cafebiz_articles.csv"
+# VietnamBiz: RSS daily (50 bài mới nhất)
+Run "VietnamBiz latest (RSS)" "python vietnambiz_crawler.py --latest --csv data/vietnambiz_articles.csv"
+# Thời báo Tài chính VN & VietnamFinance: single-sitemap, slug-based title
+Run "thoibaotaichinhvietnam latest" "python news_sitemap_crawler.py --source thoibaotaichinhvietnam --latest --csv data/thoibaotaichinhvietnam_articles.csv"
+Run "vietnamfinance latest" "python news_sitemap_crawler.py --source vietnamfinance --latest --csv data/vietnamfinance_articles.csv"
 
 # VNDIRECT: 4 category (Playwright, chậm hơn)
 foreach ($cat in @("company-note", "sector-note", "strategy-note", "economics-note")) {

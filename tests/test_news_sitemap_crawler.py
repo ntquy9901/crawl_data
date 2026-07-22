@@ -1,6 +1,7 @@
 """Unit tests for news_sitemap_crawler (tuoitre/thanhnien/vietnamplus sitemap backfill)."""
 from __future__ import annotations
 
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -158,3 +159,158 @@ def test_main_cli_latest_narrows_window(tmp_path, monkeypatch):
     nsc.main()
     today = nsc.datetime.now(nsc.HN_TZ).date()
     assert seen_from_dates == [today - nsc.timedelta(days=nsc.LATEST_WINDOW_DAYS)]
+
+
+# ────────── url_stub ──────────
+
+def test_url_stub_typical():
+    assert nsc.url_stub("https://example.com/bai-viet-1-12345.html") == "bai-viet-1-12345"
+
+
+def test_url_stub_without_suffix():
+    assert nsc.url_stub("https://example.com/bai-viet") == "bai-viet"
+
+
+def test_url_stub_empty():
+    assert nsc.url_stub("") == ""
+
+
+# ────────── _assess_title_quality ──────────
+
+def test_assess_title_quality_good():
+    assert nsc.SitemapNewsCrawler._assess_title_quality("Báo Cáo Thường Niên 2026") == (True, "ok")
+
+
+def test_assess_title_quality_too_short():
+    assert nsc.SitemapNewsCrawler._assess_title_quality("AB") == (False, "too_short")
+    assert nsc.SitemapNewsCrawler._assess_title_quality("") == (False, "too_short")
+
+
+def test_assess_title_quality_single_short_word():
+    assert nsc.SitemapNewsCrawler._assess_title_quality("Abc") == (False, "single_short_word:Abc")
+
+
+def test_assess_title_quality_all_numeric():
+    assert nsc.SitemapNewsCrawler._assess_title_quality("12345") == (False, "all_numeric")
+
+
+def test_assess_title_quality_html_remnant():
+    assert nsc.SitemapNewsCrawler._assess_title_quality("Tin Mới H1") == (False, "html_remnant")
+    assert nsc.SitemapNewsCrawler._assess_title_quality("Bài Viết Div2") == (False, "html_remnant")
+
+
+# ────────── SLUG_BASED_SOURCES ──────────
+
+def test_slug_based_sources_contains_new_sources():
+    assert "thoibaotaichinhvietnam" in nsc.SLUG_BASED_SOURCES
+    assert "vietnamfinance" in nsc.SLUG_BASED_SOURCES
+
+
+# ────────── new source configs ──────────
+
+def test_cafebiz_config():
+    cfg = nsc.SOURCES["cafebiz"]
+    assert cfg["index_url"] == "https://cafebiz.vn/sitemap.xml"
+    assert cfg["article_suffix"] == ".chn"
+    assert cfg["floor"] == date(2019, 10, 1)
+
+
+def test_thoibaotaichinhvietnam_config():
+    cfg = nsc.SOURCES["thoibaotaichinhvietnam"]
+    assert cfg["sitemap_url"] == "https://thoibaotaichinhvietnam.vn/sitemaparticles-site-1.xml"
+    assert cfg["article_suffix"] == ".html"
+    assert cfg["floor"] == date(2015, 1, 1)
+
+
+def test_vietnamfinance_config():
+    cfg = nsc.SOURCES["vietnamfinance"]
+    assert cfg["sitemap_url"] == "https://vietnamfinance.vn/sitemap.xml"
+    assert cfg["article_suffix"] == ".html"
+    assert cfg["floor"] == date(2020, 1, 1)
+
+
+# ────────── single-sitemap crawl_backfill path ──────────
+
+def test_crawl_backfill_single_sitemap(tmp_path, monkeypatch):
+    xml = FIXTURES.joinpath("vietnamfinance_sitemap.xml").read_text(encoding="utf-8")
+    calls: list[str] = []
+
+    def fake_fetch(self, url):
+        calls.append(url)
+        return xml
+
+    monkeypatch.setattr(nsc.SitemapNewsCrawler, "fetch", fake_fetch)
+    crawler = nsc.SitemapNewsCrawler("vietnamfinance", csv_file=tmp_path / "t.csv")
+    counters = crawler.crawl_backfill()
+    assert counters["kept"] == 3
+    assert counters["dup"] == 0
+    assert len(calls) == 1
+    assert calls[0] == nsc.SOURCES["vietnamfinance"]["sitemap_url"]
+    rows = (tmp_path / "t.csv").read_text(encoding="utf-8-sig")
+    assert "bai-viet-1" in rows
+    assert "bai-viet-2" in rows
+    assert "bai-viet-3" in rows
+
+
+def test_crawl_backfill_single_sitemap_fetch_fails(tmp_path, monkeypatch):
+    monkeypatch.setattr(nsc.SitemapNewsCrawler, "fetch", lambda self, url: None)
+    crawler = nsc.SitemapNewsCrawler("vietnamfinance", csv_file=tmp_path / "t.csv")
+    counters = crawler.crawl_backfill()
+    assert counters["kept"] == 0
+    assert not (tmp_path / "t.csv").exists()
+
+
+def test_crawl_backfill_single_sitemap_date_filter(tmp_path, monkeypatch):
+    xml = FIXTURES.joinpath("vietnamfinance_sitemap.xml").read_text(encoding="utf-8")
+
+    def fake_fetch(self, url):
+        return xml
+
+    monkeypatch.setattr(nsc.SitemapNewsCrawler, "fetch", fake_fetch)
+    crawler = nsc.SitemapNewsCrawler("vietnamfinance", csv_file=tmp_path / "t.csv")
+    counters = crawler.crawl_backfill(from_date=date(2026, 7, 19))
+    assert counters["kept"] == 2
+    assert counters["out_of_range"] == 1
+
+
+def test_crawl_backfill_single_sitemap_test_mode_collects_title_samples(tmp_path, monkeypatch):
+    xml = FIXTURES.joinpath("vietnamfinance_sitemap.xml").read_text(encoding="utf-8")
+
+    def fake_fetch(self, url):
+        return xml
+
+    monkeypatch.setattr(nsc.SitemapNewsCrawler, "fetch", fake_fetch)
+    monkeypatch.setattr(nsc.SitemapNewsCrawler, "_print_title_quality_report",
+                        lambda self, samples: None)
+    crawler = nsc.SitemapNewsCrawler("vietnamfinance", csv_file=tmp_path / "t.csv")
+    counters = crawler.crawl_backfill(test=True)
+    assert counters["kept"] == 3
+
+
+def test_crawl_backfill_shard_path_via_fallback(tmp_path, monkeypatch):
+    index_xml = FIXTURES.joinpath("tuoitre_index.xml").read_text(encoding="utf-8")
+    shard_xml = FIXTURES.joinpath("tuoitre_shard.xml").read_text(encoding="utf-8")
+
+    def fake_fetch(self, url):
+        if url == nsc.SOURCES["tuoitre"]["index_url"]:
+            return index_xml
+        return shard_xml
+
+    monkeypatch.setattr(nsc.SitemapNewsCrawler, "fetch", fake_fetch)
+    crawler = nsc.SitemapNewsCrawler("tuoitre", csv_file=tmp_path / "t.csv")
+    counters = crawler.crawl_backfill(max_articles=1, test=True)
+    assert counters["kept"] == 1
+
+
+# ────────── mutual-exclusion assertion ──────────
+
+def test_init_rejects_both_sitemap_url_and_shard_re():
+    nsc.SOURCES["_test_both"] = {
+        "sitemap_url": "https://example.com/sitemap.xml",
+        "shard_re": re.compile(r"foo"),
+        "article_suffix": ".html",
+        "floor": date(2020, 1, 1),
+    }
+    with pytest.raises(AssertionError, match="must have either"):
+        SitemapNewsCrawler("_test_both")
+    del nsc.SOURCES["_test_both"]

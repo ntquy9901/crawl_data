@@ -1,13 +1,14 @@
 """Backfill missing Vietstock report PDFs (download-theo-thiếu).
 
 Reads vnstock_articles.csv; for rows with pdf_url but no local PDF, downloads
-via requests (stable browser UA + Referer — the `downloadedoc/{id}` endpoint
-accepts this, no cookies needed per spike). Playwright fallback for failures
-(captcha/non-PDF responses). RULE: skip-if-exists (idempotent re-run). Writes
-`pdf_filename` + `downloaded_at` back in-place.
+via Playwright page.goto + download-event-listener (the `downloadedoc/{id}`
+endpoint auto-triggers PDF download for available docs; old/removed ones
+redirect to Error page quickly). Sequential browser session — the endpoint
+requires full browser session cookies. RULE: skip-if-exists (idempotent re-run).
+Writes `pdf_filename` + `downloaded_at` back in-place.
 
 Usage:
-  uv run python scripts/backfill_vnstock_pdf.py [--limit N] [--workers 3] [--no-playwright] [--test]
+  uv run python scripts/backfill_vnstock_pdf.py [--limit N] [--test]
 """
 from __future__ import annotations
 
@@ -15,12 +16,9 @@ import argparse
 import csv
 import re
 import sys
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import time as _time
 from datetime import datetime
 from pathlib import Path
-
-import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from utils.pdf_helpers import generate_pdf_filename  # noqa: E402
@@ -32,18 +30,13 @@ PDF_DIR = DATA / "pdf"
 FAIL_LOG = DATA / "vnstock_pdf_download_failures.txt"
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
-HEADERS = {"User-Agent": UA, "Referer": "https://finance.vietstock.vn/"}
-
+REFERER = "https://finance.vietstock.vn/"
 
 _DOC_ID_RE = re.compile(r"downloadedoc/(\d+)", re.IGNORECASE)
 
 
 def dest_for(row: dict) -> Path:
-    """Unique dest per row: {date}_{title}__{doc_id}.pdf.
-
-    doc_id (from pdf_url downloadedoc/{id}) makes the name unique — prevents
-    filename collisions when two reports share the same date + truncated title
-    (which crashed an earlier run via .part contention)."""
+    """Unique dest per row: {date}_{title}__{doc_id}.pdf."""
     base = generate_pdf_filename(row.get("title", ""), row.get("date", ""))
     m = _DOC_ID_RE.search(row.get("pdf_url") or "")
     if m:
@@ -56,61 +49,8 @@ def has_local(row: dict) -> bool:
     return bool(fn) and (PDF_DIR / fn).exists()
 
 
-def download_requests(url: str, dest: Path, timeout: int = 60) -> bool:
-    """requests download (UA + Referer). True if dest is a plausible PDF."""
-    if dest.exists() and dest.stat().st_size > 1000:
-        return True
-    part = dest.with_suffix(dest.suffix + ".part")
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=timeout, stream=True, allow_redirects=True)
-        if r.status_code >= 400 or "pdf" not in r.headers.get("content-type", "").lower():
-            return False  # captcha/HTML/redirect → leave for Playwright fallback
-        with open(part, "wb") as f:
-            for chunk in r.iter_content(8192):
-                f.write(chunk)
-        if part.stat().st_size < 1000:
-            part.unlink(missing_ok=True)
-            return False
-        part.replace(dest)
-        return True
-    except Exception:  # noqa: BLE001
-        part.unlink(missing_ok=True)
-        return False
-
-
-def run_playwright_fallback(fail_rows: list[dict]) -> list[dict]:
-    """ONE browser session, recover failures via page.goto + expect_download."""
-    recovered: list[dict] = []
-    try:
-        from playwright.sync_api import sync_playwright
-    except Exception:  # noqa: BLE001
-        print("  (playwright unavailable — skipping fallback)")
-        return recovered
-    with sync_playwright() as pw:
-        br = pw.chromium.launch(headless=True)
-        ctx = br.new_context(user_agent=UA)
-        pg = ctx.new_page()
-        for r in fail_rows:
-            dest = dest_for(r)
-            if dest.exists() and dest.stat().st_size > 1000:
-                r["pdf_filename"] = dest.name
-                recovered.append(r)
-                continue
-            try:
-                with pg.expect_download(timeout=60000) as di:
-                    pg.goto((r.get("pdf_url") or "").strip(), timeout=60000)
-                di.value.save_as(str(dest))
-                if dest.stat().st_size > 1000:
-                    r["pdf_filename"] = dest.name
-                    recovered.append(r)
-            except Exception:  # noqa: BLE001
-                pass
-        br.close()
-    return recovered
-
-
 def _reconcile_existing_pdfs(rows: list[dict]) -> int:
-    """Reconcile rows with existing on-disk PDFs from prior runs. Returns count reconciled."""
+    """Match rows without pdf_filename to existing on-disk PDFs from prior runs."""
     reconciled = 0
     for r in rows:
         if (r.get("pdf_filename") or "").strip() or not (r.get("pdf_url") or "").strip():
@@ -122,37 +62,37 @@ def _reconcile_existing_pdfs(rows: list[dict]) -> int:
     return reconciled
 
 
-def _download_phase_a(todo: list[dict], workers: int) -> tuple[int, list[dict]]:
-    """Phase A: parallel requests download. Returns (done_count, fail_rows)."""
-    done = 0
-    t0 = time.time()
-    fail_rows: list[dict] = []
+def _download_one(pg, url: str, dest: Path) -> bool:
+    """Download one PDF via page.goto + download-event-listener.
 
-    def one(r: dict):
-        return r, download_requests((r.get("pdf_url") or "").strip(), dest_for(r))
-
-    with ThreadPoolExecutor(max_workers=workers) as ex:
-        futs = {ex.submit(one, r): r for r in todo}
-        for i, fut in enumerate(as_completed(futs), 1):
-            r, ok = fut.result()
-            if ok:
-                r["pdf_filename"] = dest_for(r).name
-                r["downloaded_at"] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-                done += 1
-            else:
-                fail_rows.append(r)
-            if i % 100 == 0 or i == len(todo):
-                print(f"  phase A {i}/{len(todo)} done={done} fail={len(fail_rows)} "
-                      f"[{time.time()-t0:.0f}s]")
-    return done, fail_rows
+    For auto-download URLs, goto raises "Download is starting" — the event
+    listener captures the download regardless. For Error/HTML pages, goto
+    completes quickly with no download. Poll briefly to distinguish.
+    """
+    captured = []
+    def _on_download(dl):
+        captured.append(dl)
+    pg.on("download", _on_download)
+    try:
+        pg.goto(url, timeout=10000, wait_until="domcontentloaded")
+    except Exception:
+        pass
+    for _ in range(15):
+        if captured:
+            break
+        _time.sleep(0.1)
+    pg.remove_listener("download", _on_download)
+    pg.goto("about:blank")
+    if not captured:
+        return False
+    captured[0].save_as(str(dest))
+    return dest.exists() and dest.stat().st_size > 1000
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Vietstock PDF backfill (download-missing)")
     ap.add_argument("--limit", type=int, default=0, help="cap rows (0=all)")
-    ap.add_argument("--workers", type=int, default=3)
     ap.add_argument("--csv", default=str(CSV_FILE))
-    ap.add_argument("--no-playwright", action="store_true", help="skip Playwright fallback phase")
     ap.add_argument("--test", action="store_true", help="limit 5 rows")
     args = ap.parse_args()
     if args.test:
@@ -177,22 +117,44 @@ def main() -> None:
     todo = [r for r in rows if (r.get("pdf_url") or "").strip() and not has_local(r)]
     if args.limit:
         todo = todo[: args.limit]
-    print(f"Vietstock PDF backfill: {len(todo)} to download (of {len(rows)} rows), "
-          f"workers={args.workers}")
+    print(f"Vietstock PDF backfill: {len(todo)} to download (of {len(rows)} rows)")
     if not todo:
         print("nothing to do — all rows with pdf_url already have a local PDF")
         return
 
-    done, fail_rows = _download_phase_a(todo, args.workers)
+    recovered = 0
 
-    if fail_rows and not args.no_playwright:
-        print(f"phase B: Playwright fallback for {len(fail_rows)} failures (sequential)")
-        recovered = run_playwright_fallback(fail_rows)
-        done += len(recovered)
-        print(f"  phase B recovered {len(recovered)}/{len(fail_rows)}")
-        still_fail = [r for r in fail_rows if not has_local(r)]
-    else:
-        still_fail = fail_rows
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception:
+        print("  playwright unavailable — cannot download")
+        sys.exit(1)
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(headless=True)
+        ctx = br.new_context(user_agent=UA)
+        pg = ctx.new_page()
+        pg.goto(REFERER, timeout=30000, wait_until="domcontentloaded")
+        t0 = _time.time()
+
+        for idx, r in enumerate(todo, 1):
+            dest = dest_for(r)
+            if dest.exists() and dest.stat().st_size > 1000:
+                r["pdf_filename"] = dest.name
+                recovered += 1
+                continue
+            url = (r.get("pdf_url") or "").strip()
+            if _download_one(pg, url, dest):
+                r["pdf_filename"] = dest.name
+                r["downloaded_at"] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+                recovered += 1
+            if idx % 50 == 0 or idx == len(todo):
+                print(f"  {idx}/{len(todo)} recovered={recovered} "
+                      f"[{_time.time()-t0:.0f}s]")
+
+        br.close()
+
+    still_fail = [r for r in todo if not has_local(r)]
 
     if still_fail:
         with open(FAIL_LOG, "w", encoding="utf-8") as f:
@@ -205,7 +167,7 @@ def main() -> None:
         w.writeheader()
         w.writerows(rows)
     tmp.replace(csv_path)
-    print(f"-> {csv_path}: downloaded {done}/{len(todo)} "
+    print(f"-> {csv_path}: downloaded {recovered}/{len(todo)} "
           f"(fail={len(still_fail)}"
           f"{f', logged -> {FAIL_LOG.name}' if still_fail else ''})")
 
