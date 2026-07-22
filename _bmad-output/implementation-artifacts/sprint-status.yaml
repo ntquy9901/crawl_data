@@ -78,3 +78,42 @@ development_status:
   4-1-build-objective-merge-cross-source-dedup-version: done
   4-2-daily-schedule-extension: done
   epic-4-retrospective: optional
+
+  # === Epic 5: Core Dataset Gap-Filling (2000-2026) ===
+  epic-5: backlog
+  5-1-vndirect-fill-2017-gap-latest-records: backlog
+  5-2-mass-media-backfill-tuoitre-thanhnien-vietnamplus: backlog
+  5-3-vnexpress-wayback-expansion: backlog
+  5-4-cafef-deep-backfill-alternative-strategies: backlog
+  5-5-forum-backfill-to-platform-floor: backlog
+  epic-5-retrospective: optional
+
+  # === Epic 6: Vietstock PDF Body Extraction ===
+  epic-6: backlog
+  6-1-mass-pdf-download-all-years: backlog
+  6-2-pdf-text-extraction-body-population: backlog
+  6-3-stray-date-fix-vietstock-records: backlog
+  epic-6-retrospective: optional
+
+  # === Epic 7: Macro Data Expansion ===
+  epic-7: backlog
+  7-1-vnindex-daily-historical-2000-2026: backlog
+  7-2-vietnamese-cpi-monthly-2000-2026: backlog
+  7-3-pmi-vietnam-sbv-credit-rates-expansion: backlog
+  7-4-dxy-extension-usd-vnd-2000-2026: backlog
+  epic-7-retrospective: optional
+
+  # === Epic 8: Data Quality Framework ===
+  epic-8: backlog
+  8-1-automated-smoke-test-suite: backlog
+  8-2-dataset-profiler-pipeline: backlog
+  8-3-date-normalization-pipeline: backlog
+  8-4-diff-coverage-quality-gate: backlog
+  epic-8-retrospective: optional
+
+  # === Epic 9: VN30 Objective Layer Completion ===
+  epic-9: backlog
+  9-1-vietstock-disclosure-adapter-full-backfill: backlog
+  9-2-vsdc-adapter-full-id-sweep-verify: backlog
+  9-3-tier-2-remaining-6-outlets-daily-schedule: backlog
+  epic-9-retrospective: optional
