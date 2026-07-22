@@ -53,6 +53,31 @@ Thêm section "Clean Code (strict)" vào CLAUDE.md + fix telegram_crawler.py:
 - **Similar check:** `merge_news.py` SOURCES dict pattern checked — consistent with existing entries.
 - **Impact analysis:** `merge_news.py` callers: `run_daily_all.ps1` (runs merge_news.py after all crawlers). No other callers. Low blast radius.
 
+## Final dataset (sau backfill)
+
+| Source | Rows |
+|---|---|
+| cafef | 4.067 |
+| ssi | 1.867 |
+| hsc | 6 |
+| vndirect | 2.043 |
+| tuoitre | 283.568 |
+| thanhnien | 387.169 |
+| vietnamplus | 773.152 |
+| vnexpress | 13.938 |
+| vneconomy | 224.905 |
+| baodautu | 158.429 |
+| tinnhanhchungkhoan | 329.797 |
+| forum | 1.104 |
+| telegram (4 channels) | 2.407 |
+| **news_articles.csv** | **2.182.452** |
+
+## Commits
+- `1ac0790` — feat: expand sitemap sources + telegram + social media epic
+- `14a36b7` — docs: update project-context + sprint-status
+
+All pushed to `origin/feat/data-classification-and-telegram`.
+
 ## Risks / follow-ups
 
 - ❗**Telegram anti-bot unknown at scale**: t.me/s/ hiện không chặn, nhưng crawl sâu (100K+ pages) có thể trigger. Cần monitoring.
